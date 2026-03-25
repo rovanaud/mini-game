@@ -131,6 +131,13 @@ class Participant(models.Model):
         on_delete=models.SET_NULL,
         related_name="current_participants",
     )
+    current_game_match = models.ForeignKey(
+        "matches.GameMatch",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="current_participants",
+    )
     is_host = models.BooleanField(default=False)
     metadata_json = models.JSONField(default=dict)
 
