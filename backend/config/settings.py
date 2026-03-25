@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     "apps.matches",
     "apps.rooms",
     "apps.games",
+    "apps.adminops",
 ]
 
 MIDDLEWARE = [
