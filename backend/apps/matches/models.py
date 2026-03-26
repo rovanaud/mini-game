@@ -83,3 +83,35 @@ class GameMatchAction(models.Model):
                 name="uq_game_match_action_sequence",
             ),
         ]
+
+
+class GameMatchSeat(models.Model):
+    game_match = models.ForeignKey(
+        "GameMatch",
+        on_delete=models.CASCADE,
+        related_name="seats",
+    )
+    seat_index = models.PositiveIntegerField()
+    participant = models.ForeignKey(
+        "rooms.Participant",
+        on_delete=models.PROTECT,
+        related_name="game_match_seats",
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["game_match", "seat_index"],
+                name="uniq_game_match_seat_index",
+            ),
+            models.UniqueConstraint(
+                fields=["game_match", "participant"],
+                name="uniq_game_match_participant",
+            ),
+        ]
+        ordering = ["seat_index"]
+
+    def __str__(self) -> str:
+        return (
+            f"{self.game_match} seat={self.seat_index} participant={self.participant}"
+        )
