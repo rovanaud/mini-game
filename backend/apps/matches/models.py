@@ -50,3 +50,36 @@ class GameMatch(models.Model):
 
     class Meta:
         db_table = "game_match"
+
+
+class ActionActorType(models.TextChoices):
+    HUMAN = "human", "Human"
+    BOT = "bot", "Bot"
+
+
+class GameMatchAction(models.Model):
+    game_match_action_id = models.UUIDField(
+        primary_key=True, default=uuid.uuid4, editable=False
+    )
+    game_match = models.ForeignKey(
+        "matches.GameMatch", on_delete=models.CASCADE, related_name="actions"
+    )
+    sequence_number = models.PositiveBigIntegerField()
+    actor_type = models.CharField(
+        max_length=16, choices=ActionActorType.choices, default=ActionActorType.HUMAN
+    )
+    participant_id = models.UUIDField()
+    action_type = models.CharField(max_length=64)
+    action_payload_json = models.JSONField(default=dict)
+    validated = models.BooleanField(default=True)
+    applied_at = models.DateTimeField(auto_now_add=True)
+    resulting_state_hash = models.CharField(max_length=255, null=True, blank=True)
+
+    class Meta:
+        db_table = "game_match_action"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["game_match", "sequence_number"],
+                name="uq_game_match_action_sequence",
+            ),
+        ]
