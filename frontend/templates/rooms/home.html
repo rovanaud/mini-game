@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}Accueil{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1>Mini Game</h1>
+    <p>Créer une room ou rejoindre une room existante.</p>
+</div>
+
+<div class="card">
+    <h2>Créer une room</h2>
+    <form method="post" action="{% url 'rooms:create' %}">
+        {% csrf_token %}
+        {% if not request.identity %}
+        <label>Pseudo</label><br>
+        <input type="text" name="display_name" placeholder="Votre pseudo">
+        <br>
+        {% endif %}
+        <label>Nom de room (optionnel)</label><br>
+        <input type="text" name="room_name" placeholder="Room entre amis">
+        <br>
+        <button type="submit" class="btn">Créer</button>
+    </form>
+</div>
+
+<div class="card">
+    <h2>Rejoindre une room</h2>
+    <form method="post" action="{% url 'rooms:join' %}">
+        {% csrf_token %}
+        {% if not request.identity %}
+        <label>Pseudo</label><br>
+        <input type="text" name="display_name" placeholder="Votre pseudo">
+        <br>
+        {% endif %}
+        <label>Code room</label><br>
+        <input type="text" name="room_code" placeholder="ABCD12">
+        <br>
+        <button type="submit" class="btn">Rejoindre</button>
+    </form>
+</div>
+{% endblock %}

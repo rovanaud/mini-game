@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <title>{% block title %}Mini Game{% endblock %}</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            max-width: 860px;
+            margin: 2rem auto;
+            padding: 0 1rem;
+        }
+
+        .card {
+            border: 1px solid #ddd;
+            border-radius: 12px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 0.7rem 1rem;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            background: white;
+            text-decoration: none;
+            color: black;
+            cursor: pointer;
+        }
+
+        input,
+        select,
+        button {
+            padding: 0.7rem;
+            margin: 0.25rem 0;
+        }
+
+        .messages {
+            list-style: none;
+            padding: 0;
+        }
+
+        .messages li {
+            margin-bottom: 0.5rem;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.3rem 0.6rem;
+            border-radius: 999px;
+            background: #f2f2f2;
+            margin-right: 0.3rem;
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <p>
+            <a href="{% url 'rooms:home' %}">Accueil</a>
+            {% if request.identity %}
+            — connecté en tant que <strong>{{ request.identity.display_name }}</strong>
+            {% endif %}
+        </p>
+    </header>
+
+    {% if messages %}
+    <ul class="messages">
+        {% for message in messages %}
+        <li>{{ message }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% block content %}{% endblock %}
+</body>
+
+</html>

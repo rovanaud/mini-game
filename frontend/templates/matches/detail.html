@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}Match {{ game.display_name }}{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1>{{ game.display_name }}</h1>
+    <p>Room : {{ room.public_code }}</p>
+    <p>État du match : {{ match.state }}</p>
+    <p>Game key : {{ game.game_id }}</p>
+</div>
+
+<div class="card">
+    <h2>Participants</h2>
+    <ul>
+        {% for p in participants %}
+        <li>
+            {{ p.identity.display_name }}
+            {% if participant and participant.participant_id == p.participant_id %}
+            <strong>(vous)</strong>
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+</div>
+
+<div class="card">
+    {% include game_template %}
+</div>
+
+<div class="card">
+    <h2>Debug state</h2>
+    <pre>{{ state }}</pre>
+</div>
+{% endblock %}
