@@ -1,6 +1,76 @@
 @startuml
-title Game Plugin Component
+skinparam componentStyle rectangle
 
-' TODO: Add diagram content
+package "Application Layer" {
+  [API / Realtime Gateway] as API
+  [MatchService] as MatchService
+  [GameRuntimeService] as Runtime
+}
 
+package "Game Module SPI" {
+  interface "GameModule" as GameModule
+  interface "GameDefinitionProvider" as GameDefinitionProvider
+  interface "GameConfigValidator" as GameConfigValidator
+  interface "GameStateFactory" as GameStateFactory
+  interface "GameActionValidator" as GameActionValidator
+  interface "GameActionReducer" as GameActionReducer
+  interface "GameOutcomeResolver" as GameOutcomeResolver
+  interface "GameInterruptionPolicy" as GameInterruptionPolicy
+  interface "GameVisibilityPolicy" as GameVisibilityPolicy
+  interface "GameBotAdapter" as GameBotAdapter
+}
+
+package "Concrete Game Modules" {
+  [ConnectFourModule] as C4
+  [WerewolfModule] as WW
+  [UnoModule] as UNO
+  [MentalArithmeticModule] as MA
+}
+
+package "Persistence / Events" {
+  [MatchRepository] as MatchRepo
+  [MatchActionRepository] as ActionRepo
+  [SnapshotRepository] as SnapshotRepo
+  [DomainEventService] as EventSvc
+}
+
+API --> MatchService
+MatchService --> Runtime
+
+Runtime --> GameModule
+Runtime --> MatchRepo
+Runtime --> ActionRepo
+Runtime --> SnapshotRepo
+Runtime --> EventSvc
+
+GameModule <|.. C4
+GameModule <|.. WW
+GameModule <|.. UNO
+GameModule <|.. MA
+
+GameModule ..> GameDefinitionProvider
+GameModule ..> GameConfigValidator
+GameModule ..> GameStateFactory
+GameModule ..> GameActionValidator
+GameModule ..> GameActionReducer
+GameModule ..> GameOutcomeResolver
+GameModule ..> GameInterruptionPolicy
+GameModule ..> GameVisibilityPolicy
+GameModule ..> GameBotAdapter
+
+note right of Runtime
+Runtime is generic.
+It does not know game rules.
+It orchestrates:
+- loading match state
+- invoking the game module
+- persisting actions/snapshots
+- publishing events
+end note
+
+note bottom of C4
+ConnectFour is the reference implementation.
+It should be the first module used
+to validate the plugin contract.
+end note
 @enduml

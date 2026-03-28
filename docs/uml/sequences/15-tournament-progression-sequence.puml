@@ -1,6 +1,95 @@
 @startuml
-title Tournament Progression Sequence
+actor Host
+participant "API Gateway" as API
+participant "AuthorizationService" as AuthZ
+participant "TournamentService" as TourSvc
+participant "MatchService" as MatchSvc
+participant "DomainEventService" as Events
+database "DB" as DB
+collections "Realtime Bus" as Bus
 
-' TODO: Add diagram content
+== Create tournament ==
 
+Host -> API : POST /rooms/{roomId}/tournaments
+API -> AuthZ : canCreateTournament(hostParticipant, room)
+AuthZ --> API : yes
+
+API -> TourSvc : createTournament(roomId, config)
+TourSvc -> DB : insert tournament(state=draft)
+TourSvc --> API : tournament
+
+API -> Events : append(tournament_created)
+Events -> DB : insert domain_event_log
+Events -> Bus : publish tournament_created
+
+API --> Host : tournament summary
+
+== Register entries ==
+
+Host -> API : POST /tournaments/{tournamentId}/entries
+API -> AuthZ : canRegisterEntries(hostParticipant, tournament)
+AuthZ --> API : yes
+
+API -> TourSvc : registerEntries(tournamentId, participantIds)
+TourSvc -> DB : insert tournament_entry[*]
+TourSvc -> DB : evaluate readiness
+TourSvc --> API : entries updated
+
+== Start tournament ==
+
+Host -> API : POST /tournaments/{tournamentId}/start
+API -> AuthZ : canStartTournament(hostParticipant, tournament)
+AuthZ --> API : yes
+
+API -> TourSvc : startTournament(tournamentId)
+TourSvc -> DB : load entries
+TourSvc -> DB : generate progression structure
+TourSvc -> DB : insert tournament_match[*]
+TourSvc -> DB : update tournament(state=in_progress, startedAt=now)
+TourSvc --> API : tournament snapshot
+
+API -> Events : append(tournament_started)
+Events -> DB : insert domain_event_log
+Events -> Bus : publish tournament_started
+
+== Schedule concrete match ==
+
+Host -> API : create match for tournament node
+API -> AuthZ : canGenerateTournamentMatch(hostParticipant, tournament)
+AuthZ --> API : yes
+
+API -> TourSvc : bindTournamentNodeToMatch(tournamentMatchId)
+TourSvc -> DB : load tournament_match
+TourSvc -> MatchSvc : createMatchDraft(roomId, gameKey, tournamentId)
+MatchSvc -> DB : insert match
+MatchSvc --> TourSvc : match
+
+TourSvc -> DB : update tournament_match.match_id=matchId
+TourSvc -> DB : update tournament_match.status=scheduled
+TourSvc --> API : scheduled tournament match
+
+API -> Events : append(tournament_match_scheduled)
+Events -> DB : insert domain_event_log
+Events -> Bus : publish tournament_match_scheduled
+
+== Match completed ==
+
+MatchSvc -> Events : append(match_completed)
+Events -> DB : insert domain_event_log
+Events -> Bus : publish match_completed
+
+Events -> TourSvc : notify match completion(matchId, result)
+TourSvc -> DB : resolve tournament_match as completed
+TourSvc -> DB : advance progression / unlock next nodes
+
+alt tournament finished
+  TourSvc -> DB : update tournament(state=completed, endedAt=now)
+  TourSvc -> Events : append(tournament_completed)
+  Events -> DB : insert domain_event_log
+  Events -> Bus : publish tournament_completed
+else more rounds remain
+  TourSvc -> Events : append(tournament_round_advanced)
+  Events -> DB : insert domain_event_log
+  Events -> Bus : publish tournament_round_advanced
+end
 @enduml

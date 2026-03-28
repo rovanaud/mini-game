@@ -1,6 +1,48 @@
 @startuml
-title Admin Moderation Sequence
+actor Admin
+participant "Admin API" as API
+participant "AuthorizationService" as AuthZ
+participant "AdminService" as AdminSvc
+participant "RoomService" as RoomSvc
+participant "ChatService" as Chat
+participant "DomainEventService" as Events
+database "DB" as DB
+collections "Realtime Bus" as Bus
 
-' TODO: Add diagram content
+== Force close room ==
 
+Admin -> API : POST /admin/rooms/{roomId}/force-close
+API -> AuthZ : canAdminForceClose(admin, room)
+AuthZ --> API : yes
+
+API -> AdminSvc : forceCloseRoom(roomId, reason)
+AdminSvc -> RoomSvc : closeRoomAsAdmin(roomId)
+RoomSvc -> DB : update room(status=closing/closed, close_reason=admin_closed)
+RoomSvc -> DB : update participants as left/disconnected as needed
+RoomSvc --> AdminSvc : closed
+
+AdminSvc -> DB : insert admin_audit_log
+AdminSvc -> Events : append(room_closed_by_admin)
+Events -> DB : insert domain_event_log
+Events -> Bus : publish room_closed
+
+API --> Admin : success
+
+== Delete chat message (future) ==
+
+Admin -> API : DELETE /admin/messages/{messageId}
+API -> AuthZ : canModerateMessage(admin, messageId)
+AuthZ --> API : yes
+
+API -> AdminSvc : deleteMessage(messageId)
+AdminSvc -> Chat : softDeleteMessage(messageId)
+Chat -> DB : update chat_message.deleted_at=now
+Chat --> AdminSvc : deleted
+
+AdminSvc -> DB : insert admin_audit_log
+AdminSvc -> Events : append(chat_message_deleted_by_admin)
+Events -> DB : insert domain_event_log
+Events -> Bus : publish message_updated/deleted
+
+API --> Admin : success
 @enduml

@@ -1,6 +1,43 @@
 @startuml
-title Stats Event Ingestion
+skinparam componentStyle rectangle
 
-' TODO: Add diagram content
+component "RoomService" as RoomSvc
+component "MatchService" as MatchSvc
+component "TournamentService" as TourSvc
+component "ChatService" as Chat
+component "ProposalService" as ProposalSvc
 
+component "DomainEventService" as Events
+database "domain_event_log" as EventLog
+component "Analytics Projector" as Projector
+database "analytics tables / materialized views" as AnalyticsDB
+component "Future Stats API" as StatsAPI
+actor "User / Admin" as User
+
+RoomSvc --> Events : room events
+MatchSvc --> Events : match events
+TourSvc --> Events : tournament events
+Chat --> Events : chat events
+ProposalSvc --> Events : proposal events
+
+Events --> EventLog
+Events --> Projector : stream / polling
+
+Projector --> AnalyticsDB : aggregated stats
+StatsAPI --> AnalyticsDB
+User --> StatsAPI
+
+note right of Projector
+Later responsibilities:
+- player progression metrics
+- room activity summaries
+- win/loss aggregates
+- reconnect/abandonment rates
+- cognitive game performance trends
+end note
+
+note right of EventLog
+Keep raw events as the durable source
+for replayable business analytics.
+end note
 @enduml

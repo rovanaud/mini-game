@@ -1,6 +1,19 @@
 @startuml
-title Proposal State
+[*] --> proposed
 
-' TODO: Add diagram content
+proposed --> open : proposal published to eligible voters
+open --> accepted : acceptance rule satisfied
+open --> rejected : rejection rule satisfied
+open --> expired : expiration reached before resolution
+open --> cancelled : cancelled by creator/host/system
 
+accepted --> [*]
+rejected --> [*]
+expired --> [*]
+cancelled --> [*]
+
+state open {
+  [*] --> collecting_responses
+  collecting_responses --> collecting_responses : yes/no/abstain received
+}
 @enduml

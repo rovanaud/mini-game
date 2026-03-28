@@ -1,6 +1,197 @@
 @startuml
-title Tournament Class
+hide circle
+skinparam classAttributeIconSize 0
 
-' TODO: Add diagram content
+package "Tournament Engine" {
+  class Tournament {
+    +tournamentId: UUID
+    +roomId: UUID
+    +state: TournamentState
+    +tournamentType: TournamentType
+    +gameSelectionMode: GameSelectionMode
+    +defaultGameKey: String?
+    +createdByParticipantId: UUID
+    +startedAt: Timestamp?
+    +endedAt: Timestamp?
+    +rulesJson: Json
+    +metadataJson: Json
+  }
 
+  class TournamentEntry {
+    +tournamentEntryId: UUID
+    +tournamentId: UUID
+    +participantId: UUID
+    +seed: Int?
+    +status: TournamentEntryStatus
+    +scoreSummaryJson: Json
+    +createdAt: Timestamp
+  }
+
+  class TournamentMatch {
+    +tournamentMatchId: UUID
+    +tournamentId: UUID
+    +matchId: UUID?
+    +phase: String
+    +roundNumber: Int
+    +bracketPosition: String?
+    +status: TournamentMatchStatus
+    +dependsOnJson: Json
+    +scheduledAt: Timestamp?
+    +resolvedAt: Timestamp?
+    +metadataJson: Json
+  }
+
+  class TournamentRuleSet {
+    +allowDelays: Boolean
+    +allowManualScheduling: Boolean
+    +allowHostOverride: Boolean
+    +bestOf: Int
+    +timeLimitSeconds: Int?
+    +eliminationPolicy: String
+    +tieBreakPolicy: String?
+  }
+
+  class TournamentProgressionPolicy {
+    +policyKey: String
+    +generateNextRound()
+    +resolveAdvancement()
+    +canStartMatch()
+  }
+
+  class TournamentScheduler {
+    +scheduleMatch()
+    +rescheduleMatch()
+    +markReady()
+    +markBlocked()
+  }
+}
+
+package "Room / Match Context" {
+  class Room {
+    +roomId: UUID
+  }
+
+  class Participant {
+    +participantId: UUID
+    +roomId: UUID
+    +status: ParticipantStatus
+    +currentMatchId: UUID?
+  }
+
+  class Match {
+    +matchId: UUID
+    +roomId: UUID
+    +tournamentId: UUID?
+    +state: MatchState
+    +gameKey: String
+  }
+
+  class GameDefinition {
+    +gameKey: String
+    +supportsTournament: Boolean
+  }
+}
+
+enum TournamentState {
+  draft
+  registration_open
+  ready
+  in_progress
+  paused
+  completed
+  cancelled
+  archived
+}
+
+enum TournamentType {
+  single_elimination
+  double_elimination
+  round_robin
+  swiss
+  custom
+}
+
+enum GameSelectionMode {
+  fixed_game
+  game_pool
+  player_choice
+  host_choice
+}
+
+enum TournamentEntryStatus {
+  registered
+  active
+  eliminated
+  withdrawn
+  disqualified
+  completed
+}
+
+enum TournamentMatchStatus {
+  pending
+  scheduled
+  ready
+  in_progress
+  completed
+  cancelled
+}
+
+enum ParticipantStatus {
+  joining
+  idle
+  spectating
+  waiting
+  playing
+  left
+  kicked
+}
+
+enum MatchState {
+  draft
+  waiting_for_players
+  ready
+  starting
+  active
+  paused
+  interrupted
+  completed
+  cancelled
+  abandoned
+  archived
+}
+
+Room "1" -- "0..*" Tournament
+Tournament "1" -- "0..*" TournamentEntry
+Tournament "1" -- "0..*" TournamentMatch
+Tournament "1" *-- "1" TournamentRuleSet
+Tournament "1" ..> "1" TournamentProgressionPolicy
+Tournament "1" ..> "1" TournamentScheduler
+
+TournamentEntry "*" --> "1" Participant
+TournamentMatch "0..1" --> "1" Match
+Tournament --> GameDefinition : defaultGameKey
+Match --> GameDefinition : gameKey
+Match --> Tournament : tournamentId
+
+note right of Tournament
+Tournament is the competition container.
+It does not replace Match.
+It organizes and references matches.
+end note
+
+note right of TournamentMatch
+TournamentMatch is the tournament-side
+representation of a confrontation.
+It may or may not yet be bound
+to a concrete Match.
+end note
+
+note bottom of TournamentScheduler
+Needed because tournament flow
+must remain compatible with:
+- delayed matches
+- manual start
+- social room roaming
+- non-blocking tournament activity
+end note
 @enduml

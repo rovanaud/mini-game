@@ -1,6 +1,57 @@
 @startuml
-title Proposal Vote Sequence
+actor Participant as Initiator
+actor Participant as Voter
+participant "API Gateway" as API
+participant "AuthorizationService" as AuthZ
+participant "ProposalService" as ProposalSvc
+participant "RoomService" as RoomSvc
+participant "DomainEventService" as Events
+database "DB" as DB
+collections "Realtime Bus" as Bus
 
-' TODO: Add diagram content
+== Create proposal ==
 
+Initiator -> API : POST /rooms/{roomId}/proposals
+API -> AuthZ : canCreateProposal(initiator, room, proposalType)
+AuthZ --> API : yes
+
+API -> ProposalSvc : createProposal(roomId, scope, type, payload, rules)
+ProposalSvc -> DB : insert proposal(state=proposed/open)
+ProposalSvc --> API : proposal
+
+API -> Events : append(proposal_created)
+Events -> DB : insert domain_event_log
+Events -> Bus : publish proposal_created
+
+API --> Initiator : proposal summary
+Bus --> Voter : proposal_created
+
+== Respond ==
+
+Voter -> API : POST /proposals/{proposalId}/responses
+API -> AuthZ : canRespondToProposal(voter, proposal)
+AuthZ --> API : yes
+
+API -> ProposalSvc : recordResponse(proposalId, voter, yes/no/abstain)
+ProposalSvc -> DB : insert proposal_response
+ProposalSvc -> DB : load rules + responses
+ProposalSvc -> ProposalSvc : evaluate outcome
+
+alt threshold reached - accepted
+  ProposalSvc -> DB : update proposal(state=accepted, resolvedAt=now)
+  ProposalSvc -> RoomSvc : executeAcceptedProposal(proposal)
+  RoomSvc -> DB : apply resulting room/match/tournament action
+  ProposalSvc -> Events : append(proposal_resolved_accepted)
+  Events -> DB : insert domain_event_log
+  Events -> Bus : publish proposal_resolved
+else threshold reached - rejected
+  ProposalSvc -> DB : update proposal(state=rejected, resolvedAt=now)
+  ProposalSvc -> Events : append(proposal_resolved_rejected)
+  Events -> DB : insert domain_event_log
+  Events -> Bus : publish proposal_resolved
+else still open
+  ProposalSvc --> API : proposal still open
+end
+
+API --> Voter : updated proposal state
 @enduml

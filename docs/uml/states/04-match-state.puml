@@ -1,6 +1,29 @@
 @startuml
-title Match State
+[*] --> draft
 
-' TODO: Add diagram content
+draft --> waiting_for_players : match created
+waiting_for_players --> ready : valid seats filled
+ready --> starting : start requested
+starting --> active : initial state created
 
+active --> paused : explicit pause
+paused --> active : resume accepted
+
+active --> interrupted : disconnect / external interruption
+interrupted --> active : recovery successful
+interrupted --> abandoned : cannot recover / consensus to stop
+
+active --> completed : win/draw/completion resolved
+waiting_for_players --> cancelled : creator/host cancels
+ready --> cancelled : cancel before actual start
+active --> abandoned : abandonment decision
+
+completed --> archived : archival policy
+cancelled --> archived : archival policy
+abandoned --> archived : archival policy
+
+state active {
+  [*] --> turn_loop
+  turn_loop --> turn_loop : validated game action applied
+}
 @enduml

@@ -1,6 +1,504 @@
 @startuml
-title Core Domain Class
+hide circle
+skinparam classAttributeIconSize 0
 
-' TODO: Add diagram content
+package "Identity & Session" {
+  class UserIdentity {
+    +identityId: UUID
+    +identityType: IdentityType
+    +displayName: String
+    +avatarUrl: String?
+    +accountId: UUID?
+    +guestSessionKey: String?
+    +status: IdentityStatus
+    +createdAt: Timestamp
+    +updatedAt: Timestamp
+    +lastSeenAt: Timestamp
+    +metadataJson: Json
+  }
 
+  class GuestSession {
+    +guestSessionId: UUID
+    +identityId: UUID
+    +sessionTokenHash: String
+    +issuedAt: Timestamp
+    +expiresAt: Timestamp
+    +lastSeenAt: Timestamp
+    +clientFingerprint: String?
+    +metadataJson: Json
+  }
+}
+
+package "Room Management" {
+  class Room {
+    +roomId: UUID
+    +publicCode: String
+    +inviteToken: String
+    +status: RoomStatus
+    +visibility: RoomVisibility
+    +hostParticipantId: UUID
+    +createdByIdentityId: UUID
+    +createdAt: Timestamp
+    +updatedAt: Timestamp
+    +lastActivityAt: Timestamp
+    +expiresAt: Timestamp?
+    +closedAt: Timestamp?
+    +closeReason: String?
+    +settingsJson: Json
+  }
+
+  class Participant {
+    +participantId: UUID
+    +roomId: UUID
+    +identityId: UUID
+    +status: ParticipantStatus
+    +connectionStatus: ConnectionStatus
+    +joinedAt: Timestamp
+    +lastActiveAt: Timestamp
+    +leftAt: Timestamp?
+    +currentTableId: UUID?
+    +currentMatchId: UUID?
+    +isHost: Boolean
+    +metadataJson: Json
+  }
+
+  class ParticipantRoleAssignment {
+    +participantRoleAssignmentId: UUID
+    +participantId: UUID
+    +roleType: String
+    +scopeType: ScopeType
+    +scopeId: UUID
+    +grantedByParticipantId: UUID?
+    +createdAt: Timestamp
+    +expiresAt: Timestamp?
+    +metadataJson: Json
+  }
+
+  class Table {
+    +tableId: UUID
+    +roomId: UUID
+    +tableType: TableType
+    +name: String
+    +status: TableStatus
+    +createdAt: Timestamp
+    +closedAt: Timestamp?
+    +settingsJson: Json
+  }
+}
+
+package "Game Catalog" {
+  class GameDefinition {
+    +gameKey: String
+    +displayName: String
+    +version: String
+    +category: String
+    +minPlayers: Int
+    +maxPlayers: Int
+    +supportsSpectators: Boolean
+    +supportsPause: Boolean
+    +supportsResume: Boolean
+    +supportsBots: Boolean
+    +supportsTournament: Boolean
+    +supportsSaveResume: Boolean
+    +parameterSchemaJson: Json
+    +communicationPolicySchemaJson: Json
+    +metadataJson: Json
+  }
+}
+
+package "Match Runtime" {
+  class Match {
+    +matchId: UUID
+    +roomId: UUID
+    +tableId: UUID
+    +gameKey: String
+    +tournamentId: UUID?
+    +state: MatchState
+    +createdByParticipantId: UUID
+    +startedAt: Timestamp?
+    +endedAt: Timestamp?
+    +pausedAt: Timestamp?
+    +resumable: Boolean
+    +terminationReason: String?
+    +winnerSummaryJson: Json?
+    +configJson: Json
+    +snapshotStateJson: Json?
+    +metadataJson: Json
+  }
+
+  class MatchSeat {
+    +matchSeatId: UUID
+    +matchId: UUID
+    +seatIndex: Int
+    +teamIndex: Int?
+    +actorType: ActorType
+    +participantId: UUID?
+    +botId: UUID?
+    +seatStatus: SeatStatus
+    +joinedAt: Timestamp
+    +leftAt: Timestamp?
+    +metadataJson: Json
+  }
+
+  class MatchAction {
+    +matchActionId: UUID
+    +matchId: UUID
+    +sequenceNumber: Long
+    +actorType: ActorType
+    +participantId: UUID?
+    +botId: UUID?
+    +actionType: String
+    +actionPayloadJson: Json
+    +validated: Boolean
+    +appliedAt: Timestamp
+    +resultingStateHash: String?
+  }
+
+  class MatchSnapshot {
+    +matchSnapshotId: UUID
+    +matchId: UUID
+    +snapshotVersion: Long
+    +stateJson: Json
+    +createdAt: Timestamp
+  }
+}
+
+package "Tournament Engine" {
+  class Tournament {
+    +tournamentId: UUID
+    +roomId: UUID
+    +state: TournamentState
+    +tournamentType: TournamentType
+    +gameSelectionMode: GameSelectionMode
+    +defaultGameKey: String?
+    +createdByParticipantId: UUID
+    +startedAt: Timestamp?
+    +endedAt: Timestamp?
+    +rulesJson: Json
+    +metadataJson: Json
+  }
+
+  class TournamentEntry {
+    +tournamentEntryId: UUID
+    +tournamentId: UUID
+    +participantId: UUID
+    +seed: Int?
+    +status: TournamentEntryStatus
+    +scoreSummaryJson: Json
+    +createdAt: Timestamp
+  }
+
+  class TournamentMatch {
+    +tournamentMatchId: UUID
+    +tournamentId: UUID
+    +matchId: UUID?
+    +phase: String
+    +roundNumber: Int
+    +bracketPosition: String?
+    +status: TournamentMatchStatus
+    +dependsOnJson: Json
+    +scheduledAt: Timestamp?
+    +resolvedAt: Timestamp?
+    +metadataJson: Json
+  }
+}
+
+package "Chat & Visibility" {
+  class ChatChannel {
+    +channelId: UUID
+    +roomId: UUID
+    +scopeType: ScopeType
+    +scopeId: UUID
+    +channelPolicyJson: Json
+    +createdAt: Timestamp
+  }
+
+  class ChatMessage {
+    +messageId: UUID
+    +channelId: UUID
+    +senderType: SenderType
+    +senderId: UUID?
+    +messageType: MessageType
+    +visibilityPolicyJson: Json
+    +payloadJson: Json
+    +createdAt: Timestamp
+    +editedAt: Timestamp?
+    +deletedAt: Timestamp?
+  }
+}
+
+package "Governance" {
+  class Proposal {
+    +proposalId: UUID
+    +roomId: UUID
+    +scopeType: ScopeType
+    +scopeId: UUID
+    +proposalType: String
+    +state: ProposalState
+    +createdByParticipantId: UUID
+    +rulesJson: Json
+    +payloadJson: Json
+    +createdAt: Timestamp
+    +expiresAt: Timestamp?
+    +resolvedAt: Timestamp?
+  }
+
+  class ProposalResponse {
+    +proposalResponseId: UUID
+    +proposalId: UUID
+    +participantId: UUID
+    +responseValue: ResponseValue
+    +respondedAt: Timestamp
+  }
+}
+
+package "Bots" {
+  class BotDefinition {
+    +botId: UUID
+    +gameKey: String
+    +name: String
+    +version: String
+    +difficulty: String
+    +configJson: Json
+    +metadataJson: Json
+  }
+}
+
+package "Logging & Audit" {
+  class DomainEventLog {
+    +eventId: UUID
+    +eventType: String
+    +roomId: UUID?
+    +participantId: UUID?
+    +tableId: UUID?
+    +matchId: UUID?
+    +tournamentId: UUID?
+    +actorIdentityId: UUID?
+    +payloadJson: Json
+    +occurredAt: Timestamp
+  }
+
+  class AdminAuditLog {
+    +adminAuditLogId: UUID
+    +adminActorId: UUID
+    +actionType: String
+    +targetType: String
+    +targetId: UUID?
+    +payloadJson: Json
+    +occurredAt: Timestamp
+  }
+}
+
+enum IdentityType {
+  guest
+  registered
+}
+
+enum IdentityStatus {
+  active
+  inactive
+  deleted
+  merged
+}
+
+enum RoomStatus {
+  created
+  open
+  active
+  idle
+  closing
+  closed
+  expired
+  archived
+}
+
+enum RoomVisibility {
+  private
+  public_future
+}
+
+enum ParticipantStatus {
+  joining
+  idle
+  spectating
+  waiting
+  playing
+  left
+  kicked
+}
+
+enum ConnectionStatus {
+  connected
+  disconnected_recoverable
+  disconnected_expired
+}
+
+enum ScopeType {
+  room
+  table
+  match
+  tournament
+  game
+}
+
+enum TableType {
+  lobby
+  match
+  tournament
+  custom
+}
+
+enum TableStatus {
+  open
+  active
+  idle
+  closed
+}
+
+enum MatchState {
+  draft
+  waiting_for_players
+  ready
+  starting
+  active
+  paused
+  interrupted
+  completed
+  cancelled
+  abandoned
+  archived
+}
+
+enum ActorType {
+  human
+  bot
+}
+
+enum SeatStatus {
+  reserved
+  filled
+  vacated
+  replaced
+}
+
+enum TournamentState {
+  draft
+  registration_open
+  ready
+  in_progress
+  paused
+  completed
+  cancelled
+  archived
+}
+
+enum TournamentType {
+  single_elimination
+  double_elimination
+  round_robin
+  swiss
+  custom
+}
+
+enum GameSelectionMode {
+  fixed_game
+  game_pool
+  player_choice
+  host_choice
+}
+
+enum TournamentEntryStatus {
+  registered
+  active
+  eliminated
+  withdrawn
+  disqualified
+  completed
+}
+
+enum TournamentMatchStatus {
+  pending
+  scheduled
+  ready
+  in_progress
+  completed
+  cancelled
+}
+
+enum SenderType {
+  participant
+  system
+}
+
+enum MessageType {
+  text
+  emoji
+  reaction
+  system
+}
+
+enum ProposalState {
+  proposed
+  open
+  accepted
+  rejected
+  expired
+  cancelled
+}
+
+enum ResponseValue {
+  yes
+  no
+  abstain
+}
+
+UserIdentity "1" -- "0..*" GuestSession
+UserIdentity "1" -- "0..*" Participant
+
+Room "1" -- "0..*" Participant
+Room "1" -- "1..*" Table
+Room "1" -- "0..*" Match
+Room "1" -- "0..*" Tournament
+Room "1" -- "0..*" ChatChannel
+Room "1" -- "0..*" Proposal
+Room "1" -- "0..*" DomainEventLog
+
+Participant "1" -- "0..*" ParticipantRoleAssignment
+Participant "1" --> "0..*" MatchSeat
+Participant "1" --> "0..*" TournamentEntry
+
+Table "1" -- "0..*" Match
+
+GameDefinition "1" -- "0..*" Match
+GameDefinition "1" -- "0..*" BotDefinition
+GameDefinition "1" -- "0..*" Tournament : defaultGameKey
+
+Match "1" -- "1..*" MatchSeat
+Match "1" -- "0..*" MatchAction
+Match "1" -- "0..*" MatchSnapshot
+
+Tournament "1" -- "0..*" TournamentEntry
+Tournament "1" -- "0..*" TournamentMatch
+TournamentMatch "0..1" --> "1" Match
+
+ChatChannel "1" -- "0..*" ChatMessage
+
+Proposal "1" -- "0..*" ProposalResponse
+
+BotDefinition "1" --> "0..*" MatchSeat
+
+Participant --> Room
+Participant --> Table : currentTableId
+Participant --> Match : currentMatchId
+Match --> Table
+Match --> Tournament
+ChatChannel --> Room
+ChatMessage --> ChatChannel
+Proposal --> Room
+ProposalResponse --> Participant
+DomainEventLog --> Room
+DomainEventLog --> Participant
+DomainEventLog --> Table
+DomainEventLog --> Match
+DomainEventLog --> Tournament
 @enduml

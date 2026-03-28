@@ -1,6 +1,93 @@
 @startuml
-title Room Create Join Reconnect Sequence
+actor Client
+participant "API Gateway" as API
+participant "IdentityService" as Identity
+participant "RoomService" as RoomSvc
+participant "ParticipantService" as PartSvc
+participant "PresenceService" as Presence
+participant "ChatService" as Chat
+participant "DomainEventService" as Events
+database "DB" as DB
+collections "Realtime Bus" as Bus
 
-' TODO: Add diagram content
+== Create room ==
 
+Client -> API : POST /guest-sessions (optional)
+API -> Identity : createGuestIdentityAndSession()
+Identity -> DB : insert user_identity, guest_session
+Identity --> API : identity + session token
+API --> Client : identity + session token
+
+Client -> API : POST /rooms
+API -> Identity : resolveIdentityFromSession(token)
+Identity -> DB : load guest_session + user_identity
+Identity --> API : identity
+
+API -> RoomSvc : createRoom(identity, settings)
+RoomSvc -> DB : insert room
+RoomSvc -> DB : insert default lobby table
+RoomSvc --> API : room
+
+API -> PartSvc : addParticipantAsHost(room, identity)
+PartSvc -> DB : insert participant(is_host=true)
+PartSvc -> DB : insert participant_role_assignment(host@room)
+PartSvc --> API : host participant
+
+API -> Chat : ensureRoomChannel(room)
+Chat -> DB : insert chat_channel(scope=room)
+Chat --> API : room channel
+
+API -> Events : append(room_created, participant_joined, host_assigned)
+Events -> DB : insert domain_event_log entries
+Events -> Bus : publish room_updated / participant_joined / host_transferred(optional)
+
+API --> Client : room snapshot + participant summary
+
+== Join room ==
+
+Client -> API : POST /rooms/{roomId}/join
+API -> Identity : resolveIdentityFromSession(token)
+Identity -> DB : load identity
+Identity --> API : identity
+
+API -> RoomSvc : validateJoin(roomId, invite/code)
+RoomSvc -> DB : load room
+RoomSvc --> API : room
+
+API -> PartSvc : addParticipant(room, identity)
+PartSvc -> DB : insert participant
+PartSvc --> API : participant
+
+API -> Chat : loadVisibleChannels(room, participant)
+Chat -> DB : load room chat + policies
+Chat --> API : visible channels
+
+API -> Events : append(participant_joined)
+Events -> DB : insert domain_event_log
+Events -> Bus : publish participant_joined
+
+API --> Client : room snapshot + participant snapshot + channels
+
+== Reconnect ==
+
+Client -> API : POST /sessions/restore
+API -> Identity : restoreGuestSession(token)
+Identity -> DB : load session + identity
+Identity --> API : identity
+
+API -> Presence : reconnect(identity)
+Presence -> DB : find active participant by identity
+Presence -> DB : update participant.connection_status=connected
+Presence --> API : participant context
+
+API -> RoomSvc : loadRoomSnapshot(participant.roomId)
+RoomSvc -> DB : load room + participants + tables
+RoomSvc --> API : room snapshot
+
+API -> DB : load current match if participant.currentMatchId exists
+API -> Events : append(participant_reconnected)
+Events -> DB : insert domain_event_log
+Events -> Bus : publish participant_reconnected
+
+API --> Client : room snapshot + participant snapshot + current match snapshot?
 @enduml

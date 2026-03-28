@@ -1,6 +1,66 @@
 @startuml
-title Authorization Activity
+start
 
-' TODO: Add diagram content
+:Receive action request;
+:Resolve actor identity;
+:Resolve room participant context;
 
+if (Identity valid?) then (yes)
+else (no)
+  :Reject - unauthenticated;
+  stop
+endif
+
+if (Participant bound to room?) then (yes)
+else (no)
+  :Reject - not a room participant;
+  stop
+endif
+
+:Load scoped roles;
+:Load room settings;
+:Load relevant target entity;
+:Determine action category;
+
+if (Room action?) then (yes)
+  :Check room-level permissions;
+elseif (Match action?) then (yes)
+  :Check match state;
+  :Check participant eligibility;
+elseif (Game action?) then (yes)
+  :Check participant seat ownership;
+  :Check match active state;
+  :Check game-level permission rules;
+elseif (Tournament action?) then (yes)
+  :Check tournament scope role and state;
+elseif (Chat action?) then (yes)
+  :Check channel visibility and posting rights;
+else (other)
+  :Reject - unknown action category;
+  stop
+endif
+
+if (Host override applicable?) then (yes)
+  :Grant based on host authority;
+else (no)
+endif
+
+if (Proposal/vote required?) then (yes)
+  :Check proposal state or create pending proposal;
+  if (Proposal already accepted?) then (yes)
+  else (no)
+    :Reject - awaiting approval;
+    stop
+  endif
+else (no)
+endif
+
+if (All authorization checks pass?) then (yes)
+  :Authorize action;
+else (no)
+  :Reject - forbidden;
+  stop
+endif
+
+stop
 @enduml

@@ -1,6 +1,109 @@
 @startuml
-title Connect Four Match Sequence
+actor HostClient as Host
+actor PlayerClient as Player
+participant "API Gateway" as API
+participant "AuthZ / Policy" as AuthZ
+participant "MatchService" as MatchSvc
+participant "GameRuntimeService" as Runtime
+participant "ConnectFourModule" as C4
+participant "DomainEventService" as Events
+database "DB" as DB
+collections "Realtime Bus" as Bus
 
-' TODO: Add diagram content
+== Create match draft ==
 
+Host -> API : POST /rooms/{roomId}/matches {gameKey=connect_four}
+API -> AuthZ : canCreateMatch(hostParticipant, room)
+AuthZ --> API : yes
+
+API -> MatchSvc : createMatchDraft(roomId, hostParticipant, config)
+MatchSvc -> DB : insert table(type=match) [if needed]
+MatchSvc -> DB : insert match(state=draft)
+MatchSvc --> API : match
+
+API -> Events : append(match_created)
+Events -> DB : insert domain_event_log
+Events -> Bus : publish match_created
+
+API --> Host : match summary
+
+== Seat assignment ==
+
+Host -> API : POST /matches/{matchId}/assign-seat
+API -> AuthZ : canAssignSeat(hostParticipant, match)
+AuthZ --> API : yes
+API -> MatchSvc : assignSeat(matchId, seatIndex, participantId)
+MatchSvc -> DB : insert/update match_seat
+MatchSvc -> DB : evaluate readiness
+MatchSvc -> DB : update match(state=ready?) if seat count valid
+MatchSvc --> API : updated match
+
+API -> Events : append(match_ready?)
+Events -> DB : insert domain_event_log
+Events -> Bus : publish match_ready if applicable
+
+API --> Host : updated match
+
+== Start match ==
+
+Host -> API : POST /matches/{matchId}/start
+API -> AuthZ : canStartMatch(hostParticipant, match)
+AuthZ --> API : yes
+
+API -> MatchSvc : startMatch(matchId)
+MatchSvc -> DB : load match + seats
+MatchSvc -> Runtime : initialize(gameKey=connect_four, config, seats)
+
+Runtime -> C4 : buildInitialState(config, seats)
+C4 --> Runtime : initial board state
+
+Runtime --> MatchSvc : initial snapshot + resumable=true
+MatchSvc -> DB : update match(state=starting)
+MatchSvc -> DB : insert match_snapshot(v1)
+MatchSvc -> DB : update match(state=active, startedAt=now)
+MatchSvc --> API : active match snapshot
+
+API -> Events : append(match_started)
+Events -> DB : insert domain_event_log
+Events -> Bus : publish match_started
+
+API --> Host : active match snapshot
+Bus --> Player : match_started
+
+== Submit move ==
+
+Player -> API : POST /matches/{matchId}/actions {drop_disc(column=3)}
+API -> AuthZ : canSubmitGameAction(playerParticipant, match)
+AuthZ --> API : yes
+
+API -> MatchSvc : loadActiveMatch(matchId)
+MatchSvc -> DB : load match + latest snapshot + seats
+MatchSvc --> API : match context
+
+API -> Runtime : applyAction(matchContext, actor, action)
+Runtime -> C4 : validateAction(state, actor, action)
+C4 --> Runtime : valid
+
+Runtime -> C4 : applyAction(state, actor, action)
+C4 --> Runtime : newState + outcome(in_progress or completed)
+
+Runtime --> API : accepted action + new snapshot + outcome
+
+API -> DB : insert match_action(sequence=n)
+API -> DB : update match.snapshot_state_json
+API -> DB : insert optional match_snapshot
+API -> DB : update match if completed
+
+API -> Events : append(match_action_applied)
+Events -> DB : insert domain_event_log
+Events -> Bus : publish match_action_applied
+
+alt match completed
+  API -> Events : append(match_completed)
+  Events -> DB : insert domain_event_log
+  Events -> Bus : publish match_completed
+end
+
+API --> Player : action accepted + updated state
+Bus --> Host : match_action_applied
 @enduml

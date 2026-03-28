@@ -1,6 +1,336 @@
 @startuml
-title Er Data Model
+hide circle
+skinparam linetype ortho
+skinparam classAttributeIconSize 0
 
-' TODO: Add diagram content
+entity "user_identity" as user_identity {
+  *identity_id : UUID <<PK>>
+  --
+  identity_type : varchar
+  display_name : varchar
+  avatar_url : varchar?
+  account_id : UUID?
+  guest_session_key : varchar?
+  status : varchar
+  created_at : timestamp
+  updated_at : timestamp
+  last_seen_at : timestamp
+  metadata_json : jsonb
+}
 
+entity "guest_session" as guest_session {
+  *guest_session_id : UUID <<PK>>
+  --
+  identity_id : UUID <<FK>>
+  session_token_hash : varchar
+  issued_at : timestamp
+  expires_at : timestamp
+  last_seen_at : timestamp
+  client_fingerprint : varchar?
+  metadata_json : jsonb
+}
+
+entity "room" as room {
+  *room_id : UUID <<PK>>
+  --
+  public_code : varchar
+  invite_token : varchar
+  status : varchar
+  visibility : varchar
+  host_participant_id : UUID?
+  created_by_identity_id : UUID <<FK>>
+  created_at : timestamp
+  updated_at : timestamp
+  last_activity_at : timestamp
+  expires_at : timestamp?
+  closed_at : timestamp?
+  close_reason : varchar?
+  settings_json : jsonb
+}
+
+entity "participant" as participant {
+  *participant_id : UUID <<PK>>
+  --
+  room_id : UUID <<FK>>
+  identity_id : UUID <<FK>>
+  status : varchar
+  connection_status : varchar
+  joined_at : timestamp
+  last_active_at : timestamp
+  left_at : timestamp?
+  current_table_id : UUID?
+  current_match_id : UUID?
+  is_host : boolean
+  metadata_json : jsonb
+}
+
+entity "participant_role_assignment" as participant_role_assignment {
+  *participant_role_assignment_id : UUID <<PK>>
+  --
+  participant_id : UUID <<FK>>
+  role_type : varchar
+  scope_type : varchar
+  scope_id : UUID
+  granted_by_participant_id : UUID?
+  created_at : timestamp
+  expires_at : timestamp?
+  metadata_json : jsonb
+}
+
+entity "room_table" as room_table {
+  *table_id : UUID <<PK>>
+  --
+  room_id : UUID <<FK>>
+  table_type : varchar
+  name : varchar
+  status : varchar
+  created_at : timestamp
+  closed_at : timestamp?
+  settings_json : jsonb
+}
+
+entity "game_definition" as game_definition {
+  *game_key : varchar <<PK>>
+  --
+  display_name : varchar
+  version : varchar
+  category : varchar
+  min_players : int
+  max_players : int
+  supports_spectators : boolean
+  supports_pause : boolean
+  supports_resume : boolean
+  supports_bots : boolean
+  supports_tournament : boolean
+  supports_save_resume : boolean
+  parameter_schema_json : jsonb
+  communication_policy_schema_json : jsonb
+  metadata_json : jsonb
+}
+
+entity "match" as match {
+  *match_id : UUID <<PK>>
+  --
+  room_id : UUID <<FK>>
+  table_id : UUID <<FK>>
+  game_key : varchar <<FK>>
+  tournament_id : UUID?
+  state : varchar
+  created_by_participant_id : UUID <<FK>>
+  started_at : timestamp?
+  ended_at : timestamp?
+  paused_at : timestamp?
+  resumable : boolean
+  termination_reason : varchar?
+  winner_summary_json : jsonb?
+  config_json : jsonb
+  snapshot_state_json : jsonb?
+  metadata_json : jsonb
+}
+
+entity "match_seat" as match_seat {
+  *match_seat_id : UUID <<PK>>
+  --
+  match_id : UUID <<FK>>
+  seat_index : int
+  team_index : int?
+  actor_type : varchar
+  participant_id : UUID?
+  bot_id : UUID?
+  seat_status : varchar
+  joined_at : timestamp
+  left_at : timestamp?
+  metadata_json : jsonb
+}
+
+entity "match_action" as match_action {
+  *match_action_id : UUID <<PK>>
+  --
+  match_id : UUID <<FK>>
+  sequence_number : bigint
+  actor_type : varchar
+  participant_id : UUID?
+  bot_id : UUID?
+  action_type : varchar
+  action_payload_json : jsonb
+  validated : boolean
+  applied_at : timestamp
+  resulting_state_hash : varchar?
+}
+
+entity "match_snapshot" as match_snapshot {
+  *match_snapshot_id : UUID <<PK>>
+  --
+  match_id : UUID <<FK>>
+  snapshot_version : bigint
+  state_json : jsonb
+  created_at : timestamp
+}
+
+entity "tournament" as tournament {
+  *tournament_id : UUID <<PK>>
+  --
+  room_id : UUID <<FK>>
+  state : varchar
+  tournament_type : varchar
+  game_selection_mode : varchar
+  default_game_key : varchar?
+  created_by_participant_id : UUID <<FK>>
+  started_at : timestamp?
+  ended_at : timestamp?
+  rules_json : jsonb
+  metadata_json : jsonb
+}
+
+entity "tournament_entry" as tournament_entry {
+  *tournament_entry_id : UUID <<PK>>
+  --
+  tournament_id : UUID <<FK>>
+  participant_id : UUID <<FK>>
+  seed : int?
+  status : varchar
+  score_summary_json : jsonb
+  created_at : timestamp
+}
+
+entity "tournament_match" as tournament_match {
+  *tournament_match_id : UUID <<PK>>
+  --
+  tournament_id : UUID <<FK>>
+  match_id : UUID?
+  phase : varchar
+  round_number : int
+  bracket_position : varchar?
+  status : varchar
+  depends_on_json : jsonb
+  scheduled_at : timestamp?
+  resolved_at : timestamp?
+  metadata_json : jsonb
+}
+
+entity "chat_channel" as chat_channel {
+  *channel_id : UUID <<PK>>
+  --
+  room_id : UUID <<FK>>
+  scope_type : varchar
+  scope_id : UUID
+  channel_policy_json : jsonb
+  created_at : timestamp
+}
+
+entity "chat_message" as chat_message {
+  *message_id : UUID <<PK>>
+  --
+  channel_id : UUID <<FK>>
+  sender_type : varchar
+  sender_id : UUID?
+  message_type : varchar
+  visibility_policy_json : jsonb
+  payload_json : jsonb
+  created_at : timestamp
+  edited_at : timestamp?
+  deleted_at : timestamp?
+}
+
+entity "proposal" as proposal {
+  *proposal_id : UUID <<PK>>
+  --
+  room_id : UUID <<FK>>
+  scope_type : varchar
+  scope_id : UUID
+  proposal_type : varchar
+  state : varchar
+  created_by_participant_id : UUID <<FK>>
+  rules_json : jsonb
+  payload_json : jsonb
+  created_at : timestamp
+  expires_at : timestamp?
+  resolved_at : timestamp?
+}
+
+entity "proposal_response" as proposal_response {
+  *proposal_response_id : UUID <<PK>>
+  --
+  proposal_id : UUID <<FK>>
+  participant_id : UUID <<FK>>
+  response_value : varchar
+  responded_at : timestamp
+}
+
+entity "bot_definition" as bot_definition {
+  *bot_id : UUID <<PK>>
+  --
+  game_key : varchar <<FK>>
+  name : varchar
+  version : varchar
+  difficulty : varchar
+  config_json : jsonb
+  metadata_json : jsonb
+}
+
+entity "domain_event_log" as domain_event_log {
+  *event_id : UUID <<PK>>
+  --
+  event_type : varchar
+  room_id : UUID?
+  participant_id : UUID?
+  table_id : UUID?
+  match_id : UUID?
+  tournament_id : UUID?
+  actor_identity_id : UUID?
+  payload_json : jsonb
+  occurred_at : timestamp
+}
+
+entity "admin_audit_log" as admin_audit_log {
+  *admin_audit_log_id : UUID <<PK>>
+  --
+  admin_actor_id : UUID
+  action_type : varchar
+  target_type : varchar
+  target_id : UUID?
+  payload_json : jsonb
+  occurred_at : timestamp
+}
+
+user_identity ||--o{ guest_session
+user_identity ||--o{ participant
+user_identity ||--o{ domain_event_log : actor_identity_id
+
+room ||--o{ participant
+room ||--|{ room_table
+room ||--o{ match
+room ||--o{ tournament
+room ||--o{ chat_channel
+room ||--o{ proposal
+room ||--o{ domain_event_log
+
+participant ||--o{ participant_role_assignment
+participant ||--o{ tournament_entry
+participant ||--o{ proposal_response
+
+room_table ||--o{ match
+game_definition ||--o{ match
+game_definition ||--o{ bot_definition
+
+match ||--|{ match_seat
+match ||--o{ match_action
+match ||--o{ match_snapshot
+
+tournament ||--o{ tournament_entry
+tournament ||--o{ tournament_match
+tournament ||--o{ match
+
+chat_channel ||--o{ chat_message
+proposal ||--o{ proposal_response
+
+bot_definition ||--o{ match_seat
+
+participant ||..o{ match_seat : participant_id
+participant ||..o{ match_action : participant_id
+participant ||..o{ proposal : created_by
+participant ||..o{ tournament : created_by
+participant ||..o{ match : created_by
+
+match ||..o| tournament_match
 @enduml

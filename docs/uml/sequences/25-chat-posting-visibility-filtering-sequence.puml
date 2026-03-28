@@ -1,0 +1,41 @@
+@startuml
+actor Sender
+participant "Realtime Gateway" as RT
+participant "ChatService" as Chat
+participant "AuthorizationService" as AuthZ
+participant "VisibilityPolicyResolver" as Visibility
+participant "DomainEventService" as Events
+database "DB" as DB
+collections "Realtime Bus" as Bus
+
+== Post message ==
+
+Sender -> RT : send message(channelId, payload)
+RT -> AuthZ : canPostMessage(sender, channelId)
+AuthZ -> DB : load participant roles + room/match/tournament context
+AuthZ --> RT : yes
+
+RT -> Chat : createMessage(channelId, sender, payload)
+Chat -> DB : load chat_channel
+Chat -> Visibility : resolveMessageVisibility(channel, sender, payload)
+Visibility -> DB : load scope context + policies
+Visibility --> Chat : visibility_policy_json
+
+Chat -> DB : insert chat_message
+Chat --> RT : created message
+
+RT -> Events : append(message_created)
+Events -> DB : insert domain_event_log
+Events -> Bus : publish message_created(channel scope)
+
+== Fanout ==
+
+Bus -> Chat : deliver event to subscribers
+Chat -> Visibility : resolveRecipients(channelId, message)
+Visibility -> DB : load connected participants + scoped roles + match/table rules
+Visibility --> Chat : recipient list
+
+loop for each eligible recipient
+  Chat -> RT : emit message_created to recipient connection
+end
+@enduml

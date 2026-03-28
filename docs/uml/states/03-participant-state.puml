@@ -1,6 +1,36 @@
 @startuml
-title Participant State
+[*] --> joining
 
-' TODO: Add diagram content
+joining --> idle : room join successful
 
+idle --> spectating : chooses to spectate
+idle --> waiting : volunteers / invited / waiting for seat
+spectating --> waiting : volunteers or invited
+waiting --> playing : assigned seat and match starts
+playing --> spectating : match ends / leaves seat
+spectating --> idle : returns to lobby
+waiting --> idle : withdraws before start
+
+idle --> disconnected_recoverable : connection lost
+spectating --> disconnected_recoverable : connection lost
+waiting --> disconnected_recoverable : connection lost
+playing --> disconnected_recoverable : connection lost
+
+disconnected_recoverable --> idle : reconnect + restore idle
+disconnected_recoverable --> spectating : reconnect + restore spectator
+disconnected_recoverable --> waiting : reconnect + restore waiting
+disconnected_recoverable --> playing : reconnect + restore active match
+
+idle --> left : leaves room
+spectating --> left : leaves room
+waiting --> left : leaves room
+playing --> left : explicit leave / match policy allows exit
+
+idle --> kicked : kicked by host/admin
+spectating --> kicked : kicked by host/admin
+waiting --> kicked : kicked by host/admin
+playing --> kicked : kicked by host/admin
+
+left --> [*]
+kicked --> [*]
 @enduml

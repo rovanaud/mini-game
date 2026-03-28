@@ -1,6 +1,104 @@
 @startuml
-title Package Module Dependencies
+package "interfaces.http" as http
+package "interfaces.realtime" as realtime
 
-' TODO: Add diagram content
+package "application.identity" as app_identity
+package "application.room" as app_room
+package "application.participant" as app_participant
+package "application.match" as app_match
+package "application.game_runtime" as app_runtime
+package "application.tournament" as app_tournament
+package "application.chat" as app_chat
+package "application.proposal" as app_proposal
+package "application.authorization" as app_authz
+package "application.events" as app_events
+package "application.admin" as app_admin
 
+package "domain.identity" as dom_identity
+package "domain.room" as dom_room
+package "domain.match" as dom_match
+package "domain.tournament" as dom_tournament
+package "domain.chat" as dom_chat
+package "domain.proposal" as dom_proposal
+package "domain.shared" as dom_shared
+
+package "spi.games" as spi_games
+package "infra.persistence" as infra_persistence
+package "infra.messaging" as infra_messaging
+package "infra.scheduler" as infra_scheduler
+
+package "games.connect_four" as game_c4
+package "games.future" as game_future
+
+http --> app_identity
+http --> app_room
+http --> app_match
+http --> app_tournament
+http --> app_chat
+http --> app_proposal
+http --> app_admin
+
+realtime --> app_participant
+realtime --> app_chat
+realtime --> app_events
+
+app_identity --> dom_identity
+app_room --> dom_room
+app_participant --> dom_room
+app_match --> dom_match
+app_tournament --> dom_tournament
+app_chat --> dom_chat
+app_proposal --> dom_proposal
+app_admin --> dom_shared
+
+app_room --> app_authz
+app_match --> app_authz
+app_tournament --> app_authz
+app_chat --> app_authz
+app_proposal --> app_authz
+app_admin --> app_authz
+
+app_match --> app_runtime
+app_runtime --> spi_games
+
+game_c4 ..|> spi_games
+game_future ..|> spi_games
+
+app_identity --> infra_persistence
+app_room --> infra_persistence
+app_participant --> infra_persistence
+app_match --> infra_persistence
+app_tournament --> infra_persistence
+app_chat --> infra_persistence
+app_proposal --> infra_persistence
+app_events --> infra_persistence
+app_admin --> infra_persistence
+
+app_room --> infra_messaging
+app_participant --> infra_messaging
+app_match --> infra_messaging
+app_tournament --> infra_messaging
+app_chat --> infra_messaging
+app_events --> infra_messaging
+
+infra_scheduler --> app_participant
+infra_scheduler --> app_room
+infra_scheduler --> app_tournament
+
+note bottom of spi_games
+Games implement an SPI.
+Application logic depends on the SPI,
+not on concrete games.
+end note
+
+note right of app_authz
+Authorization should be centralized
+as an application service/policy layer.
+end note
+
+note left of dom_shared
+Put shared value objects and
+cross-cutting enums here carefully.
+Do not turn this into a dumping ground.
+end note
 @enduml

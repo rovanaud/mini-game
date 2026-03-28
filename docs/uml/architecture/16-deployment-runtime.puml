@@ -1,6 +1,103 @@
 @startuml
-title Deployment Runtime
+node "Client Device" {
+  artifact "Web App (SPA)" as WebApp
+}
 
-' TODO: Add diagram content
+node "Edge / Delivery" {
+  node "CDN / Static Hosting" as CDN
+  node "API / Realtime Ingress" as Ingress {
+    component "HTTP API" as HTTP
+    component "WebSocket Gateway" as WS
+  }
+}
 
+node "Application Cluster" {
+  component "Identity Service" as Identity
+  component "Room Service" as RoomSvc
+  component "Participant / Presence Service" as Presence
+  component "Match Service" as MatchSvc
+  component "Game Runtime Service" as Runtime
+  component "Tournament Service" as TourSvc
+  component "Chat Service" as Chat
+  component "Proposal Service" as Proposal
+  component "Authorization Service" as AuthZ
+  component "Domain Event Service" as Events
+  component "Admin Service" as Admin
+  component "Scheduler / Timeout Worker" as Scheduler
+}
+
+node "Persistence Layer" {
+  database "Relational DB" as DB
+}
+
+node "Messaging Layer" {
+  queue "Realtime Event Bus" as Bus
+}
+
+node "Game Modules" {
+  component "Connect Four Module" as C4
+  component "Future Game Modules" as FutureGames
+}
+
+WebApp --> CDN
+WebApp --> HTTP
+WebApp --> WS
+
+HTTP --> Identity
+HTTP --> RoomSvc
+HTTP --> MatchSvc
+HTTP --> TourSvc
+HTTP --> Chat
+HTTP --> Proposal
+HTTP --> Admin
+
+WS --> Presence
+WS --> Chat
+WS --> Events
+
+RoomSvc --> AuthZ
+MatchSvc --> AuthZ
+TourSvc --> AuthZ
+Chat --> AuthZ
+Proposal --> AuthZ
+Admin --> AuthZ
+
+MatchSvc --> Runtime
+Runtime --> C4
+Runtime --> FutureGames
+
+Identity --> DB
+RoomSvc --> DB
+Presence --> DB
+MatchSvc --> DB
+TourSvc --> DB
+Chat --> DB
+Proposal --> DB
+Events --> DB
+Admin --> DB
+
+RoomSvc --> Bus
+Presence --> Bus
+MatchSvc --> Bus
+TourSvc --> Bus
+Chat --> Bus
+Events --> Bus
+
+Scheduler --> Presence
+Scheduler --> RoomSvc
+Scheduler --> TourSvc
+Scheduler --> DB
+
+note right of WS
+Realtime presence, chat, and
+event subscriptions terminate here.
+end note
+
+note right of Scheduler
+Handles:
+- inactivity expiration
+- host grace timeout
+- reconnect timeout
+- future tournament timers
+end note
 @enduml

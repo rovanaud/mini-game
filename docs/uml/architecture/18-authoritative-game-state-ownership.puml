@@ -1,6 +1,46 @@
 @startuml
-title Authoritative Game State Ownership
+skinparam componentStyle rectangle
 
-' TODO: Add diagram content
+actor "Player Client" as Client
 
+component "Frontend State" as Front
+component "Realtime Gateway" as RT
+component "MatchService" as MatchSvc
+component "GameRuntimeService" as Runtime
+component "Game Module" as GameModule
+database "Match Table" as MatchDB
+database "MatchAction Table" as ActionDB
+database "MatchSnapshot Table" as SnapDB
+
+Client --> Front : user input
+Front --> RT : action request
+RT --> MatchSvc : submit action
+MatchSvc --> Runtime : execute action
+Runtime --> GameModule : validate/apply rules
+Runtime --> ActionDB : persist action
+Runtime --> SnapDB : persist latest snapshot
+Runtime --> MatchDB : update current match state
+MatchSvc --> RT : accepted/rejected + authoritative result
+RT --> Front : authoritative event/state update
+
+note right of Front
+Frontend state is ephemeral and optimistic at most.
+It is not authoritative.
+end note
+
+note right of Runtime
+Authoritative gameplay transition happens here.
+end note
+
+note right of MatchDB
+Current operational state
+end note
+
+note right of ActionDB
+Full action history
+end note
+
+note right of SnapDB
+Recovery and fast resync
+end note
 @enduml

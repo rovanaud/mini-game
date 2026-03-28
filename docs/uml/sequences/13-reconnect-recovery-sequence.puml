@@ -1,6 +1,62 @@
 @startuml
-title Reconnect Recovery Sequence
+actor Client
+participant "Realtime Gateway" as RT
+participant "IdentityService" as Identity
+participant "PresenceService" as Presence
+participant "RoomService" as RoomSvc
+participant "MatchService" as MatchSvc
+participant "DomainEventService" as Events
+database "DB" as DB
+collections "Realtime Bus" as Bus
 
-' TODO: Add diagram content
+== Temporary disconnect ==
 
+Client -x RT : connection lost
+RT -> Presence : markDisconnected(connectionId)
+Presence -> DB : resolve participant by live connection
+Presence -> DB : update participant.connection_status=disconnected_recoverable
+Presence -> Events : append(participant_disconnected)
+Events -> DB : insert domain_event_log
+Events -> Bus : publish participant_disconnected
+
+alt participant was playing
+  Presence -> MatchSvc : notifyMatchInterruption(participant.currentMatchId, participantId)
+  MatchSvc -> DB : load match
+  MatchSvc -> DB : update match(state=interrupted?) if game policy requires
+  MatchSvc -> Events : append(match_interrupted)
+  Events -> DB : insert domain_event_log
+  Events -> Bus : publish match_interrupted
+end
+
+== Reconnect ==
+
+Client -> RT : reconnect(session token, last seen sequences?)
+RT -> Identity : restoreGuestSession(token)
+Identity -> DB : load guest_session + user_identity
+Identity --> RT : identity
+
+RT -> Presence : reconnectParticipant(identity)
+Presence -> DB : find active participant by identity
+Presence -> DB : update participant.connection_status=connected
+Presence --> RT : participant context
+
+RT -> RoomSvc : loadRoomSnapshot(participant.roomId)
+RoomSvc -> DB : load room
+RoomSvc -> DB : load participants
+RoomSvc -> DB : load tables
+RoomSvc --> RT : room snapshot
+
+alt participant has currentMatchId
+  RT -> MatchSvc : loadRecoverySnapshot(currentMatchId)
+  MatchSvc -> DB : load match
+  MatchSvc -> DB : load latest match snapshot
+  MatchSvc -> DB : load action tail since snapshot(optional)
+  MatchSvc --> RT : match recovery payload
+end
+
+RT -> Events : append(participant_reconnected)
+Events -> DB : insert domain_event_log
+Events -> Bus : publish participant_reconnected
+
+RT --> Client : room snapshot + participant snapshot + match recovery payload?
 @enduml

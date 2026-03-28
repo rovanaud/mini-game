@@ -1,6 +1,24 @@
 @startuml
-title Room State
+[*] --> created
 
-' TODO: Add diagram content
+created --> open : room initialized / joinable
+open --> active : first meaningful activity
+active --> idle : no active presence/match/chat activity
+idle --> active : activity resumes
 
+idle --> expired : inactivity timeout reached
+
+active --> closing : host closes room
+active --> closing : admin force closes room
+open --> closing : host/admin closes room
+idle --> closing : host/admin closes room
+
+closing --> closed : closure finalized
+closed --> archived : archival policy
+expired --> archived : archival policy
+
+state active {
+  [*] --> monitoring
+  monitoring --> monitoring : join/leave/chat/match/tournament events\nupdate lastActivityAt
+}
 @enduml

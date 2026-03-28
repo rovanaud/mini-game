@@ -1,6 +1,117 @@
 @startuml
-title Chat Visibility Scope
+hide circle
+skinparam classAttributeIconSize 0
 
-' TODO: Add diagram content
+class Room {
+  +roomId: UUID
+}
 
+class Table {
+  +tableId: UUID
+  +roomId: UUID
+}
+
+class Match {
+  +matchId: UUID
+  +roomId: UUID
+  +tableId: UUID
+}
+
+class Tournament {
+  +tournamentId: UUID
+  +roomId: UUID
+}
+
+class Participant {
+  +participantId: UUID
+  +roomId: UUID
+}
+
+class ParticipantRoleAssignment {
+  +roleType: String
+  +scopeType: ScopeType
+  +scopeId: UUID
+}
+
+class ChatChannel {
+  +channelId: UUID
+  +roomId: UUID
+  +scopeType: ScopeType
+  +scopeId: UUID
+  +channelPolicyJson: Json
+}
+
+class ChatMessage {
+  +messageId: UUID
+  +channelId: UUID
+  +senderType: SenderType
+  +senderId: UUID?
+  +messageType: MessageType
+  +visibilityPolicyJson: Json
+  +payloadJson: Json
+  +createdAt: Timestamp
+}
+
+class VisibilityPolicy {
+  +mayRead(actor, message): Boolean
+  +mayPost(actor, channel): Boolean
+  +mayReact(actor, message): Boolean
+}
+
+enum ScopeType {
+  room
+  table
+  match
+  tournament
+}
+
+enum SenderType {
+  participant
+  system
+}
+
+enum MessageType {
+  text
+  emoji
+  reaction
+  system
+}
+
+Room "1" -- "0..*" Table
+Room "1" -- "0..*" Match
+Room "1" -- "0..*" Tournament
+Room "1" -- "0..*" Participant
+Room "1" -- "0..*" ChatChannel
+
+ChatChannel "1" -- "0..*" ChatMessage
+Participant "1" -- "0..*" ParticipantRoleAssignment
+
+ChatChannel ..> VisibilityPolicy
+ChatMessage ..> VisibilityPolicy
+
+note right of ChatChannel
+One scoped channel per context:
+- room channel
+- table channel
+- match channel
+- tournament channel
+end note
+
+note bottom of VisibilityPolicy
+Visibility is not just frontend logic.
+It depends on:
+- scope
+- sender
+- recipient role
+- game/tournament policy
+- room settings
+end note
+
+note left of Match
+Future rule examples:
+- players can talk to each other
+- spectators may listen but not talk
+- spectators may be hidden from players
+- game rules can override defaults
+end note
 @enduml

@@ -1,6 +1,15 @@
 @startuml
-title Chat Message State
+[*] --> created
 
-' TODO: Add diagram content
+created --> delivered : event emitted to eligible recipients
+created --> edited : sender edits message
+created --> deleted : sender/moderator/system deletes message
 
+edited --> delivered : edited version emitted
+edited --> deleted : sender/moderator/system deletes message
+
+delivered --> edited : edit request accepted
+delivered --> deleted : delete request accepted
+
+deleted --> [*]
 @enduml

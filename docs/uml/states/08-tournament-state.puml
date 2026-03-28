@@ -1,6 +1,30 @@
 @startuml
-title Tournament State
+[*] --> draft
 
-' TODO: Add diagram content
+draft --> registration_open : host opens registration
+registration_open --> ready : enough participants / bracket valid
+registration_open --> cancelled : host cancels before start
 
+ready --> in_progress : tournament starts
+in_progress --> paused : host pauses / blocking issue
+paused --> in_progress : resume
+in_progress --> completed : winner resolved / structure finished
+in_progress --> cancelled : cancelled during progression
+
+completed --> archived : archival policy
+cancelled --> archived : archival policy
+
+state registration_open {
+  [*] --> accepting_entries
+  accepting_entries --> accepting_entries : participant registers
+  accepting_entries --> accepting_entries : participant withdraws
+}
+
+state in_progress {
+  [*] --> scheduling
+  scheduling --> scheduling : create pending tournament matches
+  scheduling --> scheduling : bind concrete match
+  scheduling --> scheduling : resolve match result
+  scheduling --> scheduling : advance bracket/progression
+}
 @enduml

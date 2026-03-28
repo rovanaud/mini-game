@@ -1,6 +1,109 @@
 @startuml
-title Backend Component
+skinparam componentStyle rectangle
 
-' TODO: Add diagram content
+package "Client Layer" {
+  [Web Client]
+}
 
+package "Edge Layer" {
+  [HTTP API]
+  [Realtime Gateway]
+}
+
+package "Application Services" {
+  [IdentityService]
+  [RoomService]
+  [ParticipantService]
+  [PresenceService]
+  [MatchService]
+  [GameRuntimeService]
+  [TournamentService]
+  [ChatService]
+  [ProposalService]
+  [AuthorizationService]
+  [DomainEventService]
+  [AdminService]
+}
+
+package "Game Modules" {
+  [ConnectFourModule]
+  [Future Game Modules]
+}
+
+package "Persistence" {
+  database "Relational DB" as DB
+}
+
+package "Infra" {
+  queue "Realtime Bus" as Bus
+  [Clock / Scheduler]
+}
+
+[Web Client] --> [HTTP API]
+[Web Client] --> [Realtime Gateway]
+
+[HTTP API] --> [IdentityService]
+[HTTP API] --> [RoomService]
+[HTTP API] --> [ParticipantService]
+[HTTP API] --> [MatchService]
+[HTTP API] --> [TournamentService]
+[HTTP API] --> [ChatService]
+[HTTP API] --> [ProposalService]
+[HTTP API] --> [AdminService]
+
+[Realtime Gateway] --> [PresenceService]
+[Realtime Gateway] --> [ChatService]
+[Realtime Gateway] --> [DomainEventService]
+
+[RoomService] --> [AuthorizationService]
+[ParticipantService] --> [AuthorizationService]
+[MatchService] --> [AuthorizationService]
+[TournamentService] --> [AuthorizationService]
+[ChatService] --> [AuthorizationService]
+[ProposalService] --> [AuthorizationService]
+
+[MatchService] --> [GameRuntimeService]
+[GameRuntimeService] --> [ConnectFourModule]
+[GameRuntimeService] --> [Future Game Modules]
+
+[IdentityService] --> DB
+[RoomService] --> DB
+[ParticipantService] --> DB
+[PresenceService] --> DB
+[MatchService] --> DB
+[TournamentService] --> DB
+[ChatService] --> DB
+[ProposalService] --> DB
+[AdminService] --> DB
+[DomainEventService] --> DB
+
+[DomainEventService] --> Bus
+[ChatService] --> Bus
+[PresenceService] --> Bus
+[MatchService] --> Bus
+[TournamentService] --> Bus
+[RoomService] --> Bus
+
+[Clock / Scheduler] --> [PresenceService]
+[Clock / Scheduler] --> [RoomService]
+[Clock / Scheduler] --> [TournamentService]
+
+note right of [AuthorizationService]
+Centralize permission checks.
+Do not spread authorization rules
+across controllers and UI.
+end note
+
+note right of [GameRuntimeService]
+Generic match orchestration layer.
+Delegates game rules to modules.
+end note
+
+note bottom of [Clock / Scheduler]
+Used for:
+- inactivity expiration
+- host grace timeout
+- reconnect timeout
+- future tournament scheduling
+end note
 @enduml
