@@ -6,11 +6,14 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "django>=6.0.3",
+    "django-stubs>=6.0.1",
+    "mypy>=1.19.1",
     "psycopg[binary]>=3.3.3",
 ]
 
 [dependency-groups]
 dev = [
+    "django-stubs>=6.0.1",
     "pre-commit>=4.5.1",
     "pytest>=9.0.2",
     "pytest-cov>=7.1.0",
@@ -51,3 +54,44 @@ docstring-code-format = true
 DJANGO_SETTINGS_MODULE = "config.settings"
 pythonpath = ["backend"]
 python_files = ["tests.py", "test_*.py", "*_tests.py"]
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ["mypy_django_plugin.main"]
+
+files = ["backend"]
+mypy_path = ["backend"]
+
+strict = true
+
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_return_any = true
+show_error_codes = true
+pretty = true
+
+exclude = [
+  "^frontend/",
+  "^docs/",
+  "^scripts/",
+  "^\\.venv/",
+  "^venv/",
+  "^node_modules/",
+  "^backend/.*/migrations/.*$",
+]
+
+[[tool.mypy.overrides]]
+module = "*.migrations.*"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "backend.tests.*"
+ignore_errors = true
+
+[tool.django-stubs]
+django_settings_module = "backend.config.settings"
+strict_settings = false

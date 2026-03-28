@@ -216,7 +216,11 @@ staticfiles/
 .ruff_cache/
 .pytest_cache/
 .mypy_cache/
+backend/manage.py
 
 # IDE
 .vscode/
 .idea/
+notes.md
+uv.lock
+TODO.md
