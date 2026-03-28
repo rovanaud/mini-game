@@ -2,7 +2,7 @@ from django.db import models
 
 
 class GameDefinition(models.Model):
-    game_key = models.CharField(primary_key=True, max_length=64)
+    game_id = models.CharField(primary_key=True, max_length=64)
     display_name = models.CharField(max_length=100)
     version = models.CharField(max_length=32)
     category = models.CharField(max_length=64)
