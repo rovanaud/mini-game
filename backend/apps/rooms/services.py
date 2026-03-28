@@ -169,6 +169,25 @@ def get_room_for_join(
 
 @transaction.atomic
 def leave_room(participant: Participant) -> Participant:
+    # TODO: We might want to differentiate between leaving voluntarily and being
+    # disconnected due to inactivity or network issues. For now, we'll just mark the
+    # participant as left and disconnected expired, but in the future we could have
+    # more nuanced statuses and maybe even allow for reconnection within a certain time
+    # window. We should also consider what happens to the room and other participants
+    # when someone leaves, especially if it's the host. For now, we'll just update the
+    # participant's status and connection status, but we might want to add additional
+    # logic to handle host migration or room closure if the host leaves.
+    # TODO: We should also consider the case where the leaving participant is the host.
+    # In that case, we might want to automatically assign a new host from the remaining
+    # participants, or if there are no other participants, we could close the room. For
+    # now, we'll just leave the host_participant field as is, but this is something we
+    # should address in the future to ensure a good user experience.
+    # TODO: Additionally, we might want to differentiate the circumstances of leaving,
+    # such as voluntary leave vs. being kicked out vs. being disconnected due to
+    # network issues. This could affect how we update the participant's status and how
+    # we handle room state changes. For now, we'll just mark the participant as left
+    # and disconnected expired, but in the future, we could have more nuanced handling
+    # based on the reason for leaving.
     now = timezone.now()
 
     participant.status = ParticipantStatus.LEFT

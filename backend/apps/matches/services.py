@@ -2,7 +2,9 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.games.models import GameDefinition
-from apps.matches.models import GameMatch, GameMatchState
+from apps.matches.models import GameMatch, GameMatchSeat, GameMatchState
+from apps.matches.runtime import initialize_match
+from apps.matches.selectors import get_game_match_game_id, get_game_match_room_id
 from apps.rooms.models import (
     Participant,
     ParticipantStatus,
@@ -12,6 +14,7 @@ from apps.rooms.models import (
     TableStatus,
     TableType,
 )
+from apps.rooms.selectors import get_participant_room_id, get_room_matches_count
 
 EMPTY_GAME_KEY = "empty_game"
 
@@ -23,17 +26,17 @@ def create_empty_game_match(
     created_by_participant: Participant,
     config: dict | None = None,
 ) -> tuple[GameMatch, RoomTable]:
-    if created_by_participant.room_id != room.room_id:
+    if get_participant_room_id(created_by_participant) != room.room_id:
         raise ValueError("Participant does not belong to the given room.")
 
-    game = GameDefinition.objects.filter(game_key=EMPTY_GAME_KEY).first()
+    game = GameDefinition.objects.filter(game_id=EMPTY_GAME_KEY).first()
     if game is None:
         raise ValueError("Empty game definition is missing. Seed it first.")
 
     match_table = RoomTable.objects.create(
         room=room,
         table_type=TableType.MATCH,
-        name=f"Match {room.game_matches.count() + 1}",
+        name=f"Match {get_room_matches_count(room) + 1}",
         status=TableStatus.OPEN,
     )
 
@@ -56,7 +59,7 @@ def create_empty_game_match(
 
 @transaction.atomic
 def start_empty_game_match(game_match: GameMatch) -> GameMatch:
-    if game_match.game_id != EMPTY_GAME_KEY:
+    if get_game_match_game_id(game_match) != EMPTY_GAME_KEY:
         raise ValueError("This service only starts the empty game.")
     if game_match.state not in [GameMatchState.DRAFT, GameMatchState.READY]:
         raise ValueError(f"Cannot start match from state={game_match.state}")
@@ -89,7 +92,7 @@ def move_participant_to_match_table(
     participant: Participant,
     game_match: GameMatch,
 ) -> Participant:
-    if participant.room_id != game_match.room_id:
+    if get_participant_room_id(participant) != get_game_match_room_id(game_match):
         raise ValueError("Participant and match do not belong to the same room.")
 
     participant.current_table = game_match.table
@@ -106,3 +109,93 @@ def move_participant_to_match_table(
     )
 
     return participant
+
+
+@transaction.atomic
+def create_game_match(
+    *,
+    room: Room,
+    created_by_participant: Participant,
+    game_id: str,
+    players_ids: list[str],
+    config: dict | None = None,
+) -> tuple[GameMatch, RoomTable]:
+    # TODO : Verify if all participants are not currently in another active match
+    if get_participant_room_id(created_by_participant) != room.room_id:
+        raise ValueError("Participant does not belong to the given room.")
+
+    game = GameDefinition.objects.filter(game_id=game_id).first()
+    if game is None:
+        raise ValueError(f"Game definition not found for game_id={game_id}")
+
+    if len(players_ids) < game.min_players or len(players_ids) > game.max_players:
+        raise ValueError("Invalid seat participant count for this game.")
+
+    normalized_participant_ids = [str(pid) for pid in players_ids]
+    if len(set(normalized_participant_ids)) != len(normalized_participant_ids):
+        raise ValueError("Duplicate participant IDs are not allowed.")
+
+    players = list(
+        Participant.objects.filter(
+            participant_id__in=normalized_participant_ids, room=room.room_id
+        )
+    )
+
+    players_by_id = {str(p.participant_id): p for p in players}
+    missing_ids = [
+        pid for pid in normalized_participant_ids if pid not in players_by_id
+    ]
+    if missing_ids:
+        raise ValueError(f"Players do not belong to the room: {missing_ids}")
+
+    existing_count = GameMatch.objects.filter(room=room).count()
+    match_table = RoomTable.objects.create(
+        room=room,
+        table_type=TableType.MATCH,
+        name=f"Match {existing_count + 1}",
+        status=TableStatus.OPEN,
+    )
+
+    game_match = GameMatch.objects.create(
+        room=room,
+        table=match_table,
+        game=game,
+        state=GameMatchState.DRAFT,
+        created_by_participant=created_by_participant,
+        resumable=True,
+        config_json=config or {},
+        metadata_json={},
+    )
+
+    GameMatchSeat.objects.bulk_create(
+        [
+            GameMatchSeat(
+                game_match=game_match,
+                participant=players_by_id[pid],
+                seat_index=index,
+            )
+            for index, pid in enumerate(normalized_participant_ids)
+        ]
+    )
+
+    # Move participants to the match table
+    for participant in players:
+        move_participant_to_match_table(participant, game_match)
+
+    return game_match, match_table
+
+
+@transaction.atomic
+def start_game_match(game_match: GameMatch) -> GameMatch:
+    initialized = initialize_match(game_match)
+
+    table = initialized.table
+    table.status = TableStatus.ACTIVE
+    table.save(update_fields=["status"])
+
+    room = initialized.room
+    room.status = RoomStatus.ACTIVE
+    room.last_activity_at = timezone.now()
+    room.save(update_fields=["status", "last_activity_at", "updated_at"])
+
+    return initialized
