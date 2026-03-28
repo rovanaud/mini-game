@@ -6,13 +6,19 @@ from apps.matches.services import (
     move_participant_to_match_table,
     start_empty_game_match,
 )
+from apps.rooms.selectors import (
+    get_participant_current_game_match_id,
+    get_participant_current_table_id,
+    get_room_matches_count,
+    get_room_participants_count,
+)
 from apps.rooms.services import create_room, join_room
 
 pytestmark = pytest.mark.django_db
 
 
 def test_empty_game_vertical_slice_happy_path(empty_game_definition):
-    assert GameDefinition.objects.filter(game_key="empty_game").exists(), (
+    assert GameDefinition.objects.filter(game_id="empty_game").exists(), (
         "empty_game must be seeded before running this test"
     )
 
@@ -40,11 +46,11 @@ def test_empty_game_vertical_slice_happy_path(empty_game_definition):
     game_match.refresh_from_db()
     match_table.refresh_from_db()
 
-    assert room.participants.count() == 2
-    assert room.game_matches.count() == 1
+    assert get_room_participants_count(room) == 2
+    assert get_room_matches_count(room) == 1
     assert game_match.state == "active"
 
-    assert host_participant.current_game_match_id == game_match.pk
-    assert bob_participant.current_game_match_id == game_match.pk
-    assert host_participant.current_table_id == match_table.pk
-    assert bob_participant.current_table_id == match_table.pk
+    assert get_participant_current_game_match_id(host_participant) == game_match.pk
+    assert get_participant_current_game_match_id(bob_participant) == game_match.pk
+    assert get_participant_current_table_id(host_participant) == match_table.pk
+    assert get_participant_current_table_id(bob_participant) == match_table.pk

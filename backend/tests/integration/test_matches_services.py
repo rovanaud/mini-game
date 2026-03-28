@@ -6,6 +6,10 @@ from apps.matches.services import (
     start_empty_game_match,
 )
 from apps.rooms.models import ParticipantStatus
+from apps.rooms.selectors import (
+    get_participant_current_game_match_id,
+    get_participant_current_table_id,
+)
 from apps.rooms.services import create_room, join_room
 
 
@@ -43,6 +47,6 @@ def test_move_participant_to_match_table_updates_participant_state(
     move_participant_to_match_table(guest_participant, game_match)
     guest_participant.refresh_from_db()
 
-    assert guest_participant.current_table_id == match_table.pk
-    assert guest_participant.current_game_match_id == game_match.pk
+    assert get_participant_current_table_id(guest_participant) == match_table.pk
+    assert get_participant_current_game_match_id(guest_participant) == game_match.pk
     assert guest_participant.status == ParticipantStatus.PLAYING

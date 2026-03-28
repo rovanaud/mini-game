@@ -5,7 +5,7 @@ from apps.games.models import GameDefinition
 @pytest.fixture
 def empty_game_definition(db):
     game_definition, _ = GameDefinition.objects.get_or_create(
-        game_key="empty_game",
+        game_id="empty_game",
         defaults={
             "display_name": "Empty Game",
             "version": "1.0",
