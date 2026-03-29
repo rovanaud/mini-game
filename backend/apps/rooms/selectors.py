@@ -32,35 +32,35 @@ def get_room_participants_identities(room: Room):
     )
 
 
-def get_participant_room_id(participant: Participant) -> int:
-    return participant.room_id  # type: ignore[attr-defined]
+def get_participant_room_id(participant: Participant) -> str:
+    return str(participant.room_id)  # type: ignore[attr-defined]
 
 
-def get_participant_identity_id(participant: Participant) -> int:
-    return participant.identity_id  # type: ignore[attr-defined]
+def get_participant_identity_id(participant: Participant) -> str:
+    return str(participant.identity_id)  # type: ignore[attr-defined]
 
 
-def get_room_table_room_id(room_table: RoomTable) -> int:
-    return room_table.room_id  # type: ignore[attr-defined]
+def get_room_table_room_id(room_table: RoomTable) -> str:
+    return str(room_table.room_id)  # type: ignore[attr-defined]
 
 
 def get_room_matches(room: Room):
     return GameMatch.objects.filter(room=room).order_by("-started_at")
 
 
-def get_room_matches_count(room: Room):
+def get_room_matches_count(room: Room) -> int:
     return get_room_matches(room).count()
 
 
-def get_participant_current_game_match_id(participant: Participant):
-    return participant.current_game_match_id  # type: ignore[attr-defined]
+def get_participant_current_game_match_id(participant: Participant) -> str:
+    return str(participant.current_game_match_id)  # type: ignore[attr-defined]
 
 
-def get_participant_current_table_id(participant: Participant):
-    return participant.current_table_id  # type: ignore[attr-defined]
+def get_participant_current_table_id(participant: Participant) -> str:
+    return str(participant.current_table_id)  # type: ignore[attr-defined]
 
 
-def has_room_role(participant: Participant, role_type: str, room_id) -> bool:
+def has_room_role(participant: Participant, role_type: str, room_id: str) -> bool:
     now = timezone.now()
     return (
         ParticipantRoleAssignment.objects.filter(
