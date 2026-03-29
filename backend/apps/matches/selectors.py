@@ -39,7 +39,8 @@ def get_actor_context(game_match: GameMatch, participant_id: str) -> GameActorCo
     return GameActorContext(
         participant_id=participant_id,
         seat_index=seat.seat_index,
-        actor_type="human",
+        actor_type=seat.actor_type,
+        identity_id=str(seat.participant.identity_id) if seat.participant else None,
     )
 
 

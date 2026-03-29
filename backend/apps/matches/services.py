@@ -2,7 +2,13 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.games.models import GameDefinition
-from apps.matches.models import GameMatch, GameMatchSeat, GameMatchState
+from apps.matches.models import (
+    ActionActorType,
+    GameMatch,
+    GameMatchSeat,
+    GameMatchState,
+    SeatStatus,
+)
 from apps.matches.runtime import initialize_match
 from apps.matches.selectors import get_game_match_game_id, get_game_match_room_id
 from apps.rooms.models import (

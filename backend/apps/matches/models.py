@@ -1,6 +1,7 @@
 import uuid
 
 from django.db import models
+from django.utils import timezone
 
 
 class GameMatchState(models.TextChoices):
@@ -15,6 +16,18 @@ class GameMatchState(models.TextChoices):
     CANCELLED = "cancelled", "Cancelled"
     ABANDONED = "abandoned", "Abandoned"
     ARCHIVED = "archived", "Archived"
+
+
+class ActionActorType(models.TextChoices):
+    HUMAN = "human", "Human"
+    BOT = "bot", "Bot"
+
+
+class SeatStatus(models.TextChoices):
+    RESERVED = "reserved", "Reserved"
+    FILLED = "filled", "Filled"
+    VACATED = "vacated", "Vacated"
+    REPLACED = "replaced", "Replaced"
 
 
 class GameMatch(models.Model):
@@ -52,11 +65,6 @@ class GameMatch(models.Model):
         db_table = "game_match"
 
 
-class ActionActorType(models.TextChoices):
-    HUMAN = "human", "Human"
-    BOT = "bot", "Bot"
-
-
 class GameMatchAction(models.Model):
     game_match_action_id = models.UUIDField(
         primary_key=True, default=uuid.uuid4, editable=False
@@ -92,11 +100,28 @@ class GameMatchSeat(models.Model):
         related_name="seats",
     )
     seat_index = models.PositiveIntegerField()
+    actor_type = models.CharField(
+        max_length=16,
+        choices=ActionActorType.choices,
+        default=ActionActorType.HUMAN,
+    )
     participant = models.ForeignKey(
         "rooms.Participant",
+        null=True,
+        blank=True,
         on_delete=models.PROTECT,
         related_name="game_match_seats",
     )
+    bot_id = models.UUIDField(null=True, blank=True)
+    team_index = models.PositiveSmallIntegerField(null=True, blank=True)
+    seat_status = models.CharField(
+        max_length=16,
+        choices=SeatStatus.choices,
+        default=SeatStatus.FILLED,
+    )
+    joined_at = models.DateTimeField(default=timezone.now)
+    left_at = models.DateTimeField(null=True, blank=True)
+    metadata_json = models.JSONField(default=dict)
 
     class Meta:
         constraints = [
@@ -115,3 +140,30 @@ class GameMatchSeat(models.Model):
         return (
             f"{self.game_match} seat={self.seat_index} participant={self.participant}"
         )
+
+
+class MatchSnapshot(models.Model):
+    match_snapshot_id = models.UUIDField(
+        primary_key=True, default=uuid.uuid4, editable=False
+    )
+    game_match = models.ForeignKey(
+        "GameMatch",
+        on_delete=models.CASCADE,
+        related_name="snapshots",
+    )
+    snapshot_version = models.PositiveBigIntegerField()
+    state_json = models.JSONField()
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "game_match_snapshot"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["game_match", "snapshot_version"],
+                name="uq_game_match_snapshot_version",
+            ),
+        ]
+        ordering = ["snapshot_version"]
+
+    def __str__(self) -> str:
+        return f"Snapshot v{self.snapshot_version} for match {self.game_match_id}"  # type: ignore[attr-defined]
