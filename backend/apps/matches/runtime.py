@@ -5,6 +5,8 @@ import logging
 from django.db import transaction
 from django.utils import timezone
 
+import apps.adminops.types as event_types
+from apps.adminops.events import log_event
 from apps.games.registry import get_game_module
 from apps.games.types import (
     GameExecutionContext,
@@ -13,13 +15,17 @@ from apps.games.types import (
 from apps.matches.errors import (
     InvalidMatchStateError,
 )
-from apps.matches.models import GameMatch, GameMatchAction, GameMatchState
+from apps.matches.models import (
+    GameMatch,
+    GameMatchAction,
+    GameMatchState,
+    MatchSnapshot,
+)
 from apps.matches.selectors import (
     get_actor_context,
     get_game_match_game_id,
     get_game_match_room_id,
     get_match_seat_participant_ids,
-    get_match_seats_with_participant_identity,
 )
 
 logger = logging.getLogger(__name__)
@@ -34,14 +40,6 @@ def initialize_match(game_match: GameMatch) -> GameMatch:
     # TODO: Set a selector for the game_id
     module = get_game_module(get_game_match_game_id(game_match))
     module.validate_config(game_match.config_json or {})
-
-    logger.info(
-        f"Initializing match: {game_match.game_match_id} | "
-        "ids | "
-        f" {get_match_seat_participant_ids(game_match)}  | "
-        "participants"
-        f" {get_match_seats_with_participant_identity(game_match)}"
-    )
 
     seat_participant_ids = get_match_seat_participant_ids(game_match)
 
@@ -65,12 +63,20 @@ def initialize_match(game_match: GameMatch) -> GameMatch:
         update_fields=["state", "started_at", "snapshot_state_json", "resumable"]
     )
 
-    logger.info(
-        f"Match initialized: {game_match.game_match_id}",
-        f"event : match_initialized | "
-        f"game_match_id : {str(game_match.game_match_id)} | "
-        f"room_id : {str(get_game_match_room_id(game_match))} | "
-        f"game_id : {get_game_match_game_id(game_match)} | ",
+    MatchSnapshot.objects.create(
+        game_match=game_match,
+        snapshot_version=1,
+        state_json=initial_state,
+    )
+
+    log_event(
+        event_types.MATCH_STARTED,
+        room_id=get_game_match_room_id(game_match),
+        match_id=game_match.game_match_id,
+        payload={
+            "game_key": get_game_match_game_id(game_match),
+            "seat_participant_ids": seat_participant_ids,
+        },
     )
 
     return game_match
@@ -109,22 +115,18 @@ def submit_action(
 
     current_state = game_match.snapshot_state_json
 
-    logger.info(
-        "match_action_attempt"
-        f"game_match_id{game_match.game_match_id}"
-        "room_id"
-        f"{str(get_game_match_room_id(game_match))}"
-        "game_id"
-        f"{get_game_match_game_id(game_match)}"
-        f"participant_id {participant_id}"
-        "action_type"
-        f"{action_type}"
-        f"action_payload {action_payload}"
+    log_event(
+        event_types.MATCH_ACTION_SUBMITTED,
+        room_id=get_game_match_room_id(game_match),
+        match_id=game_match.game_match_id,
+        participant_id=participant_id,
+        actor_identity_id=actor.identity_id,
+        payload={
+            "action_type": action_type,
+            "sequence_number": next_sequence,
+            "action_payload": action_payload,
+        },
     )
-
-    print("-" * 50)
-    print(get_match_seat_participant_ids(game_match))
-    print("-" * 50)
 
     module.validate_action(
         state=current_state,
@@ -154,12 +156,23 @@ def submit_action(
 
     game_match.snapshot_state_json = result.new_state
 
+    # Create a new snapshot
+    # TODO: Optimize by setting a snapshotting frequency depending on the game
+    last_snapshot_version = (
+        MatchSnapshot.objects.filter(game_match=game_match)
+        .order_by("-snapshot_version")
+        .values_list("snapshot_version", flat=True)
+        .first()
+    ) or 0
+    next_snapshot_version = last_snapshot_version + 1
+
+    game_match.snapshot_state_json = result.new_state
+
     if result.is_terminal:
         game_match.state = GameMatchState.COMPLETED
         game_match.ended_at = timezone.now()
         game_match.winner_summary_json = result.winner_summary
         game_match.termination_reason = result.outcome_type or "completed"
-
         game_match.save(
             update_fields=[
                 "snapshot_state_json",
@@ -169,18 +182,26 @@ def submit_action(
                 "termination_reason",
             ]
         )
+        log_event(
+            event_types.MATCH_COMPLETED,
+            room_id=get_game_match_room_id(game_match),
+            match_id=game_match.game_match_id,
+            participant_id=participant_id,
+            actor_identity_id=actor.identity_id,
+            payload={
+                "termination_reason": result.outcome_type or "completed",
+                "winner_summary": result.winner_summary,
+                "final_sequence": next_sequence,
+            },
+        )
+
     else:
         game_match.save(update_fields=["snapshot_state_json"])
 
-    logger.info(
-        "Match action submitted.",
-        "event : match_action_submitted | ",
-        f"game_match_id : {str(game_match.game_match_id)} | "
-        f"room_id : {str(get_game_match_room_id(game_match))} | "
-        f"game_id : {get_game_match_game_id(game_match)} | "
-        f"participant_id : {participant_id} | "
-        f"action_type : {action_type} | "
-        f"new_match_state : {game_match.state} | ",
+    MatchSnapshot.objects.create(
+        game_match=game_match,
+        snapshot_version=next_snapshot_version,
+        state_json=result.new_state,
     )
 
     return game_match

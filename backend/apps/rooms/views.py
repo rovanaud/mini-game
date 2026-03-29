@@ -1,5 +1,3 @@
-import logging
-
 from django.contrib import messages
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_GET, require_POST
@@ -10,10 +8,8 @@ from apps.matches.models import GameMatch
 from apps.matches.runtime import initialize_match
 from apps.matches.services import create_game_match
 from apps.rooms.models import Participant, Room
-from apps.rooms.selectors import get_room_participants
+from apps.rooms.selectors import get_room_participants, is_room_host
 from apps.rooms.services import create_room, join_room
-
-logger = logging.getLogger(__name__)
 
 
 def _require_identity(request):
@@ -45,22 +41,15 @@ def create_room_view(request):
 
     # room_name = (request.POST.get("room_name") or "").strip() or None
 
+    # room creation logged in service layer
     room, participant, room_table = create_room(
         identity=request.identity,
-    )
-
-    logger.info(
-        "room_created_from_home -> "
-        "event : room_created_from_home"
-        f"room_code : {room.public_code} | "
-        f"participant_id : {str(participant.participant_id)} | "
-        f"identity_id : {str(request.identity.identity_id)} | "
     )
 
     response = redirect("rooms:detail", room_code=room.public_code)
     if raw_token:
         response.set_cookie(
-            "guest_session_token",
+            "guest_session_token",  # TODO: use constant from identities app
             raw_token,
             httponly=True,
             samesite="Lax",
@@ -83,23 +72,17 @@ def join_room_view(request):
     room_code = (request.POST.get("room_code") or "").strip().upper()
 
     room = get_object_or_404(Room, public_code=room_code)
-    participant = join_room(
+
+    # joining room event logged in service layer
+    join_room(
         room=room,
         identity=request.identity,
-    )
-
-    logger.info(
-        "room_joined_from_home -> "
-        "event : room_joined_from_home"
-        f"room_code : {room.public_code} | "
-        f"participant_id : {str(participant.participant_id)} | "
-        f"identity_id : {str(request.identity.identity_id)} | "
     )
 
     response = redirect("rooms:detail", room_code=room.public_code)
     if raw_token:
         response.set_cookie(
-            "guest_session_token",
+            "guest_session_token",  # TODO: use constant from identities app
             raw_token,
             httponly=True,
             samesite="Lax",
@@ -147,27 +130,19 @@ def start_game_view(request, room_code):
 
     creator = get_object_or_404(Participant, room=room, identity=request.identity)
 
-    if not creator.is_host:
+    if not is_room_host(creator, room.room_id):
         messages.error(request, "Seul l'hôte peut démarrer une partie.")
         return redirect("rooms:detail", room_code=room.public_code)
 
     game_id = (request.POST.get("game_id") or "").strip()
     players_ids = request.POST.getlist("players_ids")
+
+    # game creationlogged in service layer
     game_match, match_table = create_game_match(
         room=room,
         game_id=game_id,
         created_by_participant=creator,
         players_ids=players_ids,
-    )
-
-    logger.info(
-        "match_created_from_room -> "
-        "event : match_created_from_room"
-        f"room_code : {room.public_code} | "
-        f"match_id : {str(game_match.game_match_id)} | "
-        f"game_id : {game_id} | "
-        f"participant_id : {str(creator.participant_id)} | "
-        f"players : {players_ids} | "
     )
 
     initialize_match(game_match)

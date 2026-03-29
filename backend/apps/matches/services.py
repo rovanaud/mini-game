@@ -114,6 +114,15 @@ def move_participant_to_match_table(
         ]
     )
 
+    log_event(
+        event_types.MATCH_JOINED_MATCH,
+        room_id=get_game_match_room_id(game_match),
+        match_id=game_match.game_match_id,
+        participant_id=participant.participant_id,
+        actor_identity_id=get_participant_identity_id(participant),
+        payload={},
+    )
+
     return participant
 
 
@@ -182,6 +191,19 @@ def create_game_match(
             )
             for index, pid in enumerate(normalized_participant_ids)
         ]
+    )
+
+    log_event(
+        event_types.MATCH_CREATED,
+        room_id=room.room_id,
+        match_id=game_match.game_match_id,
+        participant_id=created_by_participant.participant_id,
+        actor_identity_id=get_participant_identity_id(created_by_participant),
+        payload={
+            "game_id": game_id,
+            "player_count": len(players_ids),
+            "player_ids": normalized_participant_ids,
+        },
     )
 
     # Move participants to the match table
