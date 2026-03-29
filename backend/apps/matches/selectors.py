@@ -31,8 +31,11 @@ def get_match_seat(game_match: GameMatch, participant_id: str) -> GameMatchSeat 
 
 
 def get_actor_context(game_match: GameMatch, participant_id: str) -> GameActorContext:
-    seat = get_match_seat(game_match, participant_id)
-
+    seat = (
+        GameMatchSeat.objects.select_related("participant__identity")
+        .filter(game_match=game_match, participant_id=participant_id)
+        .first()
+    )
     if seat is None:
         raise ActorNotInMatchError("Participant is not a player in this match.")
 

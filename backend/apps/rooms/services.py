@@ -5,11 +5,16 @@ from datetime import timedelta
 from django.db import transaction
 from django.utils import timezone
 
+import apps.adminops.types as event_types
+from apps.adminops.events import log_event
 from apps.identities.models import UserIdentity
 from apps.rooms.models import (
     ConnectionStatus,
     Participant,
+    ParticipantRoleAssignment,
     ParticipantStatus,
+    RoleScopeType,
+    RoleType,
     Room,
     RoomStatus,
     RoomTable,
@@ -17,6 +22,7 @@ from apps.rooms.models import (
     TableStatus,
     TableType,
 )
+from apps.rooms.selectors import get_participant_room_id
 
 DEFAULT_ROOM_INACTIVITY_MINUTES = 15
 
@@ -85,6 +91,22 @@ def create_room(
     room.host_participant = participant
     room.save(update_fields=["host_participant", "updated_at"])
 
+    log_event(
+        event_types.ROOM_CREATED,
+        room_id=room.room_id,
+        participant_id=participant.participant_id,
+        actor_identity_id=identity.identity_id,
+        payload={"public_code": room.public_code},
+    )
+
+    ParticipantRoleAssignment.objects.create(
+        participant=participant,
+        role_type=RoleType.HOST,
+        scope_type=RoleScopeType.ROOM,
+        scope_id=room.room_id,
+        granted_by_participant=None,  # self-granted at creation
+    )
+
     return room, participant, lobby_table
 
 
@@ -116,6 +138,13 @@ def join_room(
         if existing.status == ParticipantStatus.JOINING:
             existing.status = ParticipantStatus.IDLE
         existing.save(update_fields=["connection_status", "last_active_at", "status"])
+        log_event(
+            event_types.ROOM_JOINED,
+            room_id=room.room_id,
+            participant_id=existing.participant_id,
+            actor_identity_id=identity.identity_id,
+            payload={"reconnect": True},
+        )
         return existing
 
     lobby_table = (
@@ -154,6 +183,22 @@ def join_room(
     room.expires_at = now + timedelta(minutes=DEFAULT_ROOM_INACTIVITY_MINUTES)
     room.save(update_fields=["last_activity_at", "status", "expires_at", "updated_at"])
 
+    ParticipantRoleAssignment.objects.create(
+        participant=participant,
+        role_type=RoleType.SPECTATOR,
+        scope_type=RoleScopeType.ROOM,
+        scope_id=room.room_id,
+        granted_by_participant=None,
+    )
+
+    log_event(
+        event_types.ROOM_JOINED,
+        room_id=room.room_id,
+        participant_id=participant.participant_id,
+        actor_identity_id=identity.identity_id,
+        payload={"reconnect": False},
+    )
+
     return participant
 
 
@@ -169,14 +214,6 @@ def get_room_for_join(
 
 @transaction.atomic
 def leave_room(participant: Participant) -> Participant:
-    # TODO: We might want to differentiate between leaving voluntarily and being
-    # disconnected due to inactivity or network issues. For now, we'll just mark the
-    # participant as left and disconnected expired, but in the future we could have
-    # more nuanced statuses and maybe even allow for reconnection within a certain time
-    # window. We should also consider what happens to the room and other participants
-    # when someone leaves, especially if it's the host. For now, we'll just update the
-    # participant's status and connection status, but we might want to add additional
-    # logic to handle host migration or room closure if the host leaves.
     # TODO: We should also consider the case where the leaving participant is the host.
     # In that case, we might want to automatically assign a new host from the remaining
     # participants, or if there are no other participants, we could close the room. For
@@ -198,5 +235,12 @@ def leave_room(participant: Participant) -> Participant:
     room = participant.room
     room.last_activity_at = now
     room.save(update_fields=["last_activity_at", "updated_at"])
+
+    log_event(
+        event_types.ROOM_LEFT,
+        room_id=get_participant_room_id(participant),
+        participant_id=participant.participant_id,
+        actor_identity_id=participant.identity.identity_id,
+    )
 
     return participant

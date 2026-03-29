@@ -1,6 +1,8 @@
 from django.db import transaction
 from django.utils import timezone
 
+import apps.adminops.types as event_types
+from apps.adminops.events import log_event
 from apps.games.models import GameDefinition
 from apps.matches.models import (
     ActionActorType,
@@ -13,14 +15,21 @@ from apps.matches.runtime import initialize_match
 from apps.matches.selectors import get_game_match_game_id, get_game_match_room_id
 from apps.rooms.models import (
     Participant,
+    ParticipantRoleAssignment,
     ParticipantStatus,
+    RoleScopeType,
+    RoleType,
     Room,
     RoomStatus,
     RoomTable,
     TableStatus,
     TableType,
 )
-from apps.rooms.selectors import get_participant_room_id, get_room_matches_count
+from apps.rooms.selectors import (
+    get_participant_identity_id,
+    get_participant_room_id,
+    get_room_matches_count,
+)
 
 EMPTY_GAME_KEY = "empty_game"
 
@@ -182,12 +191,16 @@ def create_game_match(
         metadata_json={},
     )
 
+    now = timezone.now()
     GameMatchSeat.objects.bulk_create(
         [
             GameMatchSeat(
                 game_match=game_match,
                 participant=players_by_id[pid],
                 seat_index=index,
+                actor_type=ActionActorType.HUMAN,
+                seat_status=SeatStatus.FILLED,
+                joined_at=now,
             )
             for index, pid in enumerate(normalized_participant_ids)
         ]
@@ -204,6 +217,19 @@ def create_game_match(
             "player_count": len(players_ids),
             "player_ids": normalized_participant_ids,
         },
+    )
+
+    ParticipantRoleAssignment.objects.bulk_create(
+        [
+            ParticipantRoleAssignment(
+                participant=players_by_id[pid],
+                role_type=RoleType.PLAYER,
+                scope_type=RoleScopeType.MATCH,
+                scope_id=game_match.game_match_id,
+                granted_by_participant=created_by_participant,
+            )
+            for pid in normalized_participant_ids
+        ]
     )
 
     # Move participants to the match table

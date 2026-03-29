@@ -1,5 +1,15 @@
+from django.db import models
+from django.utils import timezone
+
 from apps.matches.models import GameMatch
-from apps.rooms.models import Participant, Room, RoomTable
+from apps.rooms.models import (
+    Participant,
+    ParticipantRoleAssignment,
+    RoleScopeType,
+    RoleType,
+    Room,
+    RoomTable,
+)
 
 
 def get_room_participants(room: Room):
@@ -26,6 +36,10 @@ def get_participant_room_id(participant: Participant) -> int:
     return participant.room_id  # type: ignore[attr-defined]
 
 
+def get_participant_identity_id(participant: Participant) -> int:
+    return participant.identity_id  # type: ignore[attr-defined]
+
+
 def get_room_table_room_id(room_table: RoomTable) -> int:
     return room_table.room_id  # type: ignore[attr-defined]
 
@@ -44,3 +58,29 @@ def get_participant_current_game_match_id(participant: Participant):
 
 def get_participant_current_table_id(participant: Participant):
     return participant.current_table_id  # type: ignore[attr-defined]
+
+
+def has_room_role(participant: Participant, role_type: str, room_id) -> bool:
+    now = timezone.now()
+    return (
+        ParticipantRoleAssignment.objects.filter(
+            participant=participant,
+            role_type=role_type,
+            scope_type=RoleScopeType.ROOM,
+            scope_id=room_id,
+        )
+        .filter(models.Q(expires_at__isnull=True) | models.Q(expires_at__gt=now))
+        .exists()
+    )
+
+
+def is_room_host(participant: Participant, room_id) -> bool:
+    return has_room_role(participant, RoleType.HOST, room_id)
+
+
+def get_participant_roles(participant: Participant) -> list[ParticipantRoleAssignment]:
+    return list(
+        ParticipantRoleAssignment.objects.filter(participant=participant).filter(
+            models.Q(expires_at__isnull=True) | models.Q(expires_at__gt=timezone.now())
+        )
+    )

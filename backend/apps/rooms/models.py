@@ -1,6 +1,7 @@
 import uuid
 
 from django.db import models
+from django.utils import timezone
 
 
 class RoomStatus(models.TextChoices):
@@ -143,3 +144,59 @@ class Participant(models.Model):
 
     class Meta:
         db_table = "participant"
+
+
+class RoleType(models.TextChoices):
+    HOST = "host", "Host"
+    MODERATOR = "moderator", "Moderator"
+    PLAYER = "player", "Player"
+    SPECTATOR = "spectator", "Spectator"
+    NARRATOR = "narrator", "Narrator"
+    REFEREE = "referee", "Referee"
+
+
+class RoleScopeType(models.TextChoices):
+    ROOM = "room", "Room"
+    TABLE = "table", "Table"
+    MATCH = "match", "Match"
+    TOURNAMENT = "tournament", "Tournament"
+    GAME = "game", "Game"
+
+
+class ParticipantRoleAssignment(models.Model):
+    participant_role_assignment_id = models.UUIDField(
+        primary_key=True, default=uuid.uuid4, editable=False
+    )
+    participant = models.ForeignKey(
+        Participant,
+        on_delete=models.CASCADE,
+        related_name="role_assignments",
+    )
+    role_type = models.CharField(max_length=32, choices=RoleType.choices)
+    scope_type = models.CharField(max_length=32, choices=RoleScopeType.choices)
+    scope_id = models.UUIDField()
+    granted_by_participant = models.ForeignKey(
+        Participant,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="granted_role_assignments",
+    )
+    created_at = models.DateTimeField(default=timezone.now)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    metadata_json = models.JSONField(default=dict)
+
+    class Meta:
+        db_table = "participant_role_assignment"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["participant", "role_type", "scope_type", "scope_id"],
+                name="uq_participant_role_scope",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return (
+            f"{self.participant_id}"  # type: ignore[attr-defined]
+            f" | {self.role_type} @ {self.scope_type}:{self.scope_id}"
+        )
