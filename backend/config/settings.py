@@ -60,7 +60,7 @@ ROOT_URLCONF = "config.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": ["../frontend/templates"],
+        "DIRS": [BASE_DIR.parent / "frontend/templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -128,9 +128,6 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = "static/"
-
-
-BASE_DIR = Path(__file__).resolve().parent.parent
 
 LOG_DIR = BASE_DIR / "logs"
 LOG_DIR.mkdir(exist_ok=True)
