@@ -20,3 +20,8 @@ MATCH_ABANDONED = "match.abandoned"
 MATCH_PAUSED = "match.paused"
 MATCH_JOINED_MATCH = "match.joined_match"
 MATCH_LEFT_MATCH = "match.left_match"
+
+# Chat
+CHAT_MESSAGE_POSTED = "chat.message_posted"
+CHAT_MESSAGE_EDITED = "chat.message_edited"
+CHAT_MESSAGE_DELETED = "chat.message_deleted"
