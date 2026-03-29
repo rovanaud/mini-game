@@ -1,11 +1,14 @@
 from dataclasses import dataclass, field
 
+# TODO: Add the metadata fields to the contexts managed by the game's modules
+
 
 @dataclass
 class GameActorContext:
     participant_id: str
     seat_index: int
     actor_type: str = "human"
+    identity_id: str | None = None
 
 
 @dataclass
@@ -13,6 +16,7 @@ class GameSetupContext:
     match_id: str
     room_id: str
     seat_participant_ids: list[str]
+    seat_identity_ids: list[str] | None = field(default_factory=list)
 
 
 @dataclass
