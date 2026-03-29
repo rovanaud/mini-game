@@ -20,9 +20,6 @@ class UserIdentity(models.Model):
     identity_type = models.CharField(max_length=32, choices=IdentityType.choices)
     display_name = models.CharField(max_length=100)
     avatar_url = models.TextField(null=True, blank=True)
-    guest_session_key = models.CharField(
-        max_length=255, null=True, blank=True, unique=True
-    )
     status = models.CharField(
         max_length=32, choices=IdentityStatus.choices, default=IdentityStatus.ACTIVE
     )
@@ -48,6 +45,8 @@ class GuestSession(models.Model):
     last_seen_at = models.DateTimeField(auto_now_add=True)
     client_fingerprint = models.CharField(max_length=255, null=True, blank=True)
     metadata_json = models.JSONField(default=dict)
+    is_revoked = models.BooleanField(default=False)
+    revoked_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "guest_session"

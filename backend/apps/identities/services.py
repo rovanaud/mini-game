@@ -5,6 +5,8 @@ from datetime import timedelta
 from django.db import transaction
 from django.utils import timezone
 
+import apps.adminops.types as event_types
+from apps.adminops.events import log_event
 from apps.identities.models import (
     GuestSession,
     IdentityStatus,
@@ -31,6 +33,11 @@ def create_guest_identity(display_name: str | None = None) -> UserIdentity:
         display_name=display_name or _generate_guest_display_name(),
         status=IdentityStatus.ACTIVE,
     )
+    log_event(
+        event_types.GUEST_IDENTITY_CREATED,
+        actor_identity_id=identity.identity_id,
+        payload={"display_name": identity.display_name},
+    )
     return identity
 
 
@@ -53,10 +60,8 @@ def create_guest_session(
         client_fingerprint=client_fingerprint,
     )
 
-    if not identity.guest_session_key:
-        identity.guest_session_key = token_hash
-        identity.last_seen_at = now
-        identity.save(update_fields=["guest_session_key", "last_seen_at", "updated_at"])
+    identity.last_seen_at = now
+    identity.save(update_fields=["last_seen_at", "updated_at"])
 
     return session, raw_token
 
@@ -76,13 +81,13 @@ def create_guest_identity_and_session(
 
 
 @transaction.atomic
-def restore_guest_session(raw_token: str) -> UserIdentity | None:
+def restore_guest_session(raw_token: str) -> tuple[UserIdentity, GuestSession] | None:
     token_hash = _hash_token(raw_token)
     now = timezone.now()
 
     session = (
         GuestSession.objects.select_related("identity")
-        .filter(session_token_hash=token_hash, expires_at__gt=now)
+        .filter(session_token_hash=token_hash, expires_at__gt=now, is_revoked=False)
         .first()
     )
     if session is None:
@@ -95,4 +100,44 @@ def restore_guest_session(raw_token: str) -> UserIdentity | None:
     identity.last_seen_at = now
     identity.save(update_fields=["last_seen_at", "updated_at"])
 
-    return identity
+    log_event(
+        event_types.GUEST_SESSION_RESTORED,
+        actor_identity_id=identity.identity_id,
+    )
+
+    return identity, session
+
+
+@transaction.atomic
+def refresh_guest_session(
+    raw_token: str,
+    *,
+    duration: timedelta | None = None,
+) -> tuple[GuestSession, str] | None:
+    """
+    Rotates a valid session: revokes the old one, creates a new one.
+    Returns (new_session, new_raw_token) or None if the token is invalid/expired.
+    """
+    token_hash = _hash_token(raw_token)
+    now = timezone.now()
+
+    old_session = (
+        GuestSession.objects.select_related("identity")
+        .filter(session_token_hash=token_hash, expires_at__gt=now, is_revoked=False)
+        .first()
+    )
+    if old_session is None:
+        return None
+
+    # Revoke old session
+    old_session.is_revoked = True
+    old_session.revoked_at = now
+    old_session.save(update_fields=["is_revoked", "revoked_at"])
+
+    # Issue new session
+    new_session, new_raw_token = create_guest_session(
+        old_session.identity,
+        client_fingerprint=old_session.client_fingerprint,
+        duration=duration,
+    )
+    return new_session, new_raw_token

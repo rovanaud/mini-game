@@ -189,7 +189,6 @@ Represents a human identity known to the system, whether guest or registered.
 * `display_name`
 * `avatar_url` nullable
 * `account_id` nullable
-* `guest_session_key` nullable
 * `created_at`
 * `updated_at`
 * `last_seen_at`

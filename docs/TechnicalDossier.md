@@ -184,7 +184,6 @@ Represents a human user known to the system.
 * `display_name: string`
 * `avatar_url: string?`
 * `account_id: UUID?`
-* `guest_session_key: string?`
 * `status: enum(active, inactive, deleted, merged)`
 * `created_at: timestamp`
 * `updated_at: timestamp`
@@ -1359,7 +1358,6 @@ This is not final SQL syntax, but it is close enough for schema derivation.
 * display_name
 * avatar_url
 * account_id nullable
-* guest_session_key nullable unique
 * status
 * created_at
 * updated_at
