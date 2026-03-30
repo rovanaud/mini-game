@@ -7,11 +7,11 @@
       <div class="flex items-center gap-3">
         <div class="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white text-sm"
              style="background-color: #007AFF">
-          {{ initials }}
+          {{ userStore.initials }}
         </div>
         <div>
           <p class="text-xs font-semibold uppercase tracking-widest" style="color: #8E8E93">Welcome back</p>
-          <p class="text-base font-bold leading-tight" style="color: #1C1C1E">{{ displayName }}</p>
+          <p class="text-base font-bold leading-tight" style="color: #1C1C1E">{{ userStore.displayName }}</p>
         </div>
       </div>
       <button @click="$router.push('/profile')"
@@ -109,31 +109,28 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import { Gamepad2, Users, BarChart2, ChevronRight, Settings, Trophy, MessageSquare } from 'lucide-vue-next'
-import BottomNav from '@/components/BottomNav.vue'
-
-// TODO: replace with real user from auth store
-const displayName = 'Alex'
-const initials = computed(() => displayName.slice(0, 2).toUpperCase())
-
-// TODO: replace with real data from API
-const recentActivity = [
-  {
-    id: 1,
-    title: 'Connect Four — Victory',
-    subtitle: 'vs. Sarah · 2 hours ago',
-    icon: Trophy,
-    iconBg: '#FFFAEB',
-    iconColor: '#FF9500',
-  },
-  {
-    id: 2,
-    title: 'Sarah invited you to a room',
-    subtitle: 'Game Night · 5 hours ago',
-    icon: MessageSquare,
-    iconBg: '#EAF3FF',
-    iconColor: '#007AFF',
-  },
-]
+  // import { computed } from 'vue'
+  import { Gamepad2, Users, BarChart2, ChevronRight, Settings, Trophy, MessageSquare } from 'lucide-vue-next'
+  import BottomNav from '@/components/BottomNav.vue'
+  import { useUserStore } from '@/stores/user'
+  const userStore = useUserStore()
+  // TODO: replace with real data from API
+  const recentActivity = [
+    {
+      id: 1,
+      title: 'Connect Four — Victory',
+      subtitle: 'vs. Sarah · 2 hours ago',
+      icon: Trophy,
+      iconBg: '#FFFAEB',
+      iconColor: '#FF9500',
+    },
+    {
+      id: 2,
+      title: 'Sarah invited you to a room',
+      subtitle: 'Game Night · 5 hours ago',
+      icon: MessageSquare,
+      iconBg: '#EAF3FF',
+      iconColor: '#007AFF',
+    },
+  ]
 </script>
