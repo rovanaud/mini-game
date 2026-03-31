@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "corsheaders",
     "apps.identities",
     "apps.matches",
     "apps.rooms",
@@ -46,6 +47,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -130,6 +132,7 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 
+# ---- Logging configuration ---------------------------------------------
 LOG_DIR = BASE_DIR / "logs"
 LOG_DIR.mkdir(exist_ok=True)
 
@@ -164,11 +167,11 @@ LOGGING = {
             "handlers": ["console", "file"],
             "level": "INFO",
         },
-        "django": {
-            "handlers": ["console", "file"],
-            "level": "INFO",
-            "propagate": False,
-        },
+        # "django": {
+        #     "handlers": ["console", "file"],
+        #     "level": "INFO",
+        #     "propagate": False,
+        # },
         "apps": {
             "handlers": ["console", "file"],
             "level": "INFO",
@@ -176,3 +179,22 @@ LOGGING = {
         },
     },
 }
+
+# ---- CORS settings for local development ----------------------
+# Dev only — allow Vue dev server
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+]
+CORS_ALLOW_CREDENTIALS = True  # needed for the guest_session_token cookie
+
+# ---- CSRF settings for local development ----------------------
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:5173",
+]
+
+# ---- Session/Cookie settings for local development ----------------------
+# guest session token shared between Django and Vue for authentication
+SESSION_COOKIE_SAMESITE = "Lax"
+SESSION_COOKIE_SECURE = False  # False for local HTTP dev
+CSRF_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_SECURE = False
