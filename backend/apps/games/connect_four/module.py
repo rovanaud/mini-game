@@ -61,7 +61,7 @@ class ConnectFourModule(GameBaseModule):
             supports_pause=False,
             supports_resume=False,
             supports_bots=False,  # future: easy to add
-            supports_hidden_state=False,  # full board visible to all
+            # supports_hidden_state=False,  # full board visible to all
         )
 
     def validate_config(self, config: dict) -> None:
