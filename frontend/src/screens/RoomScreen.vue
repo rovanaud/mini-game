@@ -42,7 +42,7 @@
         <div v-else-if="!msg.isMine" class="flex gap-2 items-end">
           <div class="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
                :style="`background-color: ${msg.avatarColor}`">
-            {{ msg.author[0].toUpperCase() }}
+            {{ (msg.author || '?')[0].toUpperCase() }}
           </div>
           <div class="flex flex-col max-w-[75%]">
             <span class="text-[10px] font-bold uppercase tracking-wide mb-1 ml-1"
@@ -195,69 +195,69 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import {
-  ChevronLeft, MoreHorizontal, Plus, PlusCircle,
-  Send, Smile, CheckCheck, Rocket, Trophy,
-  UserPlus, Settings, LogOut
-} from 'lucide-vue-next'
-import BottomNav from '@/components/BottomNav.vue'
+  import { ref } from 'vue'
+  import {
+    ChevronLeft, MoreHorizontal, Plus, PlusCircle,
+    Send, Smile, CheckCheck, Rocket, Trophy,
+    UserPlus, Settings, LogOut
+  } from 'lucide-vue-next'
+  import BottomNav from '@/components/BottomNav.vue'
 
-// TODO: fetch from API via route param (route.params.id)
-const room = ref({ name: 'Friday Game Night', onlineCount: 8 })
+  // TODO: fetch from API via route param (route.params.id)
+  const room = ref({ name: 'Friday Game Night', onlineCount: 8 })
 
-const showSheet = ref(false)
-const inputText = ref('')
+  const showSheet = ref(false)
+  const inputText = ref('')
 
-const participants = ref([
-  { id: 1, name: 'You',   color: '#007AFF', status: 'online' },
-  { id: 2, name: 'Sarah', color: '#34C759', status: 'playing' },
-  { id: 3, name: 'Mike',  color: '#8E8E93', status: 'idle' },
-  { id: 4, name: 'Léa',   color: '#FF9500', status: 'online' },
-])
+  const participants = ref([
+    { id: 1, name: 'You',   color: '#007AFF', status: 'online' },
+    { id: 2, name: 'Sarah', color: '#34C759', status: 'playing' },
+    { id: 3, name: 'Mike',  color: '#8E8E93', status: 'idle' },
+    { id: 4, name: 'Léa',   color: '#FF9500', status: 'online' },
+  ])
 
-const statusColor = (status: string) => {
-  if (status === 'online')  return '#34C759'
-  if (status === 'playing') return '#007AFF'
-  if (status === 'idle')    return '#C7C7CC'
-  return '#C7C7CC'
-}
+  const statusColor = (status: string) => {
+    if (status === 'online')  return '#34C759'
+    if (status === 'playing') return '#007AFF'
+    if (status === 'idle')    return '#C7C7CC'
+    return '#C7C7CC'
+  }
 
-const statusLegend = [
-  { label: 'Online',  color: '#34C759' },
-  { label: 'Playing', color: '#007AFF' },
-  { label: 'Idle',    color: '#C7C7CC' },
-]
+  const statusLegend = [
+    { label: 'Online',  color: '#34C759' },
+    { label: 'Playing', color: '#007AFF' },
+    { label: 'Idle',    color: '#C7C7CC' },
+  ]
 
-// TODO: fetch from API
-const messages = ref([
-  { id: 1, type: 'chat', isMine: false, author: 'Alex', avatarColor: '#FF9500', text: 'Is everyone ready for tonight?', time: '18:42' },
-  { id: 2, type: 'chat', isMine: true,  author: 'You',  avatarColor: '#007AFF', text: 'Count me in! 🍕', time: '18:45' },
-  { id: 3, type: 'system', text: 'Sarah joined the room' },
-  { id: 4, type: 'chat', isMine: false, author: 'Sarah', avatarColor: '#34C759', text: 'Board is looking legendary! 🎲', time: '18:47' },
-])
+  // TODO: fetch from API
+  const messages = ref([
+    { id: 1, type: 'chat', isMine: false, author: 'Alex', avatarColor: '#FF9500', text: 'Is everyone ready for tonight?', time: '18:42' },
+    { id: 2, type: 'chat', isMine: true,  author: 'You',  avatarColor: '#007AFF', text: 'Count me in! 🍕', time: '18:45' },
+    { id: 3, type: 'system', text: 'Sarah joined the room' },
+    { id: 4, type: 'chat', isMine: false, author: 'Sarah', avatarColor: '#34C759', text: 'Board is looking legendary! 🎲', time: '18:47' },
+  ])
 
-const chatContainer = ref<HTMLElement | null>(null)
+  const chatContainer = ref<HTMLElement | null>(null)
 
-const sendMessage = () => {
-  if (!inputText.value.trim()) return
-  messages.value.push({
-    id: Date.now(),
-    type: 'chat',
-    isMine: true,
-    author: 'You',
-    avatarColor: '#007AFF',
-    text: inputText.value.trim(),
-    time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
-  })
-  inputText.value = ''
-}
+  const sendMessage = () => {
+    if (!inputText.value.trim()) return
+    messages.value.push({
+      id: Date.now(),
+      type: 'chat',
+      isMine: true,
+      author: 'You',
+      avatarColor: '#007AFF',
+      text: inputText.value.trim(),
+      time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+    })
+    inputText.value = ''
+  }
 </script>
 
 <style scoped>
-.fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
-.fade-enter-from, .fade-leave-to { opacity: 0; }
+  .fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
+  .fade-enter-from, .fade-leave-to { opacity: 0; }
 
-.slide-up-enter-active, .slide-up-leave-active { transition: transform 0.3s ease; }
-.slide-up-enter-from, .slide-up-leave-to { transform: translateY(100%); }
+  .slide-up-enter-active, .slide-up-leave-active { transition: transform 0.3s ease; }
+  .slide-up-enter-from, .slide-up-leave-to { transform: translateY(100%); }
 </style>
