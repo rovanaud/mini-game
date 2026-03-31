@@ -1,6 +1,6 @@
-from dataclasses import dataclass, field
+from __future__ import annotations
 
-# TODO: Add the metadata fields to the contexts managed by the game's modules
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -16,7 +16,7 @@ class GameSetupContext:
     match_id: str
     room_id: str
     seat_participant_ids: list[str]
-    seat_identity_ids: list[str] | None = field(default_factory=list)
+    seat_identity_ids: list[str | None] = field(default_factory=list)
 
 
 @dataclass
@@ -27,9 +27,31 @@ class GameExecutionContext:
 
 
 @dataclass
-class GameActionResult:
-    new_state: dict
-    is_terminal: bool = False
-    outcome_type: str | None = None
-    winner_summary: dict | None = None
+class GameOutcome:
+    outcome_type: str  # "win", "draw", "abandoned", etc.
+    winner_summary: dict | None = None  # None for draws/abandonments
     side_effects: list[dict] = field(default_factory=list)
+
+
+@dataclass
+class GameActionResult:
+    """
+    Pure state transition result. Terminal detection is the
+    responsibility of resolve_outcome(), not apply_action().
+    """
+
+    new_state: dict
+    side_effects: list[dict] = field(default_factory=list)
+
+
+@dataclass
+class GameMetadata:
+    game_id: str
+    display_name: str
+    min_players: int
+    max_players: int
+    supports_spectators: bool = True
+    supports_pause: bool = False
+    supports_resume: bool = False
+    supports_bots: bool = False
+    supports_hidden_state: bool = False

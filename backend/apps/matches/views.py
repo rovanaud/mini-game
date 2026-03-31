@@ -68,9 +68,17 @@ def submit_match_action_view(request, match_id):
 
     action_type = (request.POST.get("action_type") or "").strip()
 
-    action_payload = {}
-    if action_type == "play_vowel":
-        action_payload["vowel"] = (request.POST.get("vowel") or "").strip()
+    # Generic payload: read all POST keys except action_type and CSRF
+    action_payload = {
+        k: v
+        for k, v in request.POST.items()
+        if k not in ("action_type", "csrfmiddlewaretoken")
+    }
+
+    # Coerce numeric strings to int where possible (e.g. column="3" → 3)
+    for k, v in action_payload.items():
+        if isinstance(v, str) and v.isdigit():
+            action_payload[k] = int(v)
 
     logger.info(
         "match_action_submitted_from_view",
