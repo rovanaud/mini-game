@@ -20,6 +20,10 @@ from django.urls import include, path
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    # HTML views (legacy)
     path("rooms/", include("apps.rooms.urls", namespace="rooms")),
     path("matches/", include("apps.matches.urls", namespace="matches")),
+    # REST API — consumed by Vue frontend via Vite proxy
+    path("api/rooms/", include("apps.rooms.api_urls")),
+    path("api/matches/", include("apps.matches.api_urls")),
 ]
