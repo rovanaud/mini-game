@@ -54,4 +54,4 @@ class GameMetadata:
     supports_pause: bool = False
     supports_resume: bool = False
     supports_bots: bool = False
-    supports_hidden_state: bool = False
+    # supports_hidden_state: bool = False
