@@ -19,6 +19,8 @@
       </button>
     </header>
 
+    <p v-if="errorMsg" class="mx-4 mt-2 text-sm text-red-500 font-medium">{{ errorMsg }}</p>
+
     <main class="px-4 py-4 space-y-4 pb-24">
 
       <!-- Quick Actions -->
@@ -137,7 +139,7 @@
                      class="flex-1 px-4 py-3 rounded-2xl text-sm font-semibold"
                      style="background-color: #F2F2F7; color: #1C1C1E"
                      placeholder="XXXXX"
-                     maxlength="5"
+                     maxlength="7"
                      @keyup.enter="joinByCode" />
               <button @click="joinByCode"
                       class="px-6 py-3 rounded-2xl font-semibold text-sm text-white transition active:scale-[0.98]"
@@ -173,99 +175,61 @@
 </template>
 
 <script setup lang="ts">
-  import {ref} from 'vue'
-  import { Plus, Users, QrCode, ChevronRight, ChevronLeft, Circle, Wifi, Link2 } from 'lucide-vue-next'
-  import {useRouter} from 'vue-router'
-  import { useRoomStore } from '@/stores/room'
-  import { useUserStore } from '@/stores/user'
-  import BottomNav from '@/components/BottomNav.vue'
+  import { ref } from 'vue'
+import { Plus, Users, QrCode, ChevronRight, ChevronLeft, Circle } from 'lucide-vue-next'
+import { useRouter } from 'vue-router'
+import { roomApi } from '@/api'
+import BottomNav from '@/components/BottomNav.vue'
 
+const router = useRouter()
+const showQuickActions = ref(false)
+const showJoinSheet = ref(false)
+const joinCode = ref('')
+const joinLink = ref('')
+const errorMsg = ref('')
 
-  const roomStore = useRoomStore()
-  const userStore = useUserStore()
+// Stubs until API list endpoint is wired to a store
+const activeRoom = ref<null>(null)
+const permanentRooms = ref<{ id: string; name: string; lastActivity: string; color: string }[]>([])
 
-  // ── State ────────────────────────────────────────────────────
-  const showQuickActions = ref(false)
-  const showJoinCode = ref(false)
-  const showJoinSheet = ref(false)
-  const joinCode = ref('')
-  const joinLink = ref('')
-  const router = useRouter()
-  // ── Demo data ────────────────────────────────────────────────
-  const activeRoom = ref({
-    id: 'active-1',
-    name: 'Friday Game Night',
-    onlineCount: 8,
-    isPermanent: false,
-  })
+const goToActiveRoom = () => {
+    if (activeRoom.value) router.push(`/room/${(activeRoom.value as any).id}`)
+}
 
-  const permanentRooms = ref([
-    {
-      id: 'perm-1',
-      name: 'Family Hub',
-      lastActivity: '2 days ago',
-      color: '#FF9500',
-      isPermanent: true,
-    },
-    {
-      id: 'perm-2',
-      name: 'Work Crew',
-      lastActivity: '1 week ago',
-      color: '#FF3B30',
-      isPermanent: true,
-    },
-  ])
+const goToPermanentRoom = (room: { id: string }) => {
+    router.push(`/room/${room.id}`)
+}
 
-  // ── Actions ──────────────────────────────────────────────────
-  const createRoom = () => {
-    showQuickActions.value = false
-    // TODO: create ephemeral room via API
-    roomStore.enterRoom('ephemeral-123', {
-      id: 'ephemeral-123',
-      name: 'New Room',
-      onlineCount: 1,
-      isPermanent: false,
-    })
-    router.push('/room/ephemeral-123')
-  }
+const createRoom = async () => {
+    errorMsg.value = ''
+    try {
+        const result = await roomApi.create()
+        router.push(`/room/${result.public_code}`)
+    } catch (e: unknown) {
+        errorMsg.value = e instanceof Error ? e.message : 'Failed to create room'
+    }
+}
 
-  const joinRoom = () => {
-    if (!joinCode.value.trim()) return
-    showJoinCode.value = false
-    // TODO: join via API
-    roomStore.enterRoom('joined-456', {
-      id: 'joined-456',
-      name: `Room ${joinCode.value.toUpperCase()}`,
-      onlineCount: 5,
-      isPermanent: false,
-    })
-    router.push('/room/joined-456')
-  }
+const joinByCode = async () => {
+    if (joinCode.value.length < 4) return
+    errorMsg.value = ''
+    try {
+        const result = await roomApi.join(joinCode.value)
+        showJoinSheet.value = false
+        router.push(`/room/${result.public_code}`)
+    } catch (e: unknown) {
+        errorMsg.value = e instanceof Error ? e.message : 'Failed to join room'
+    }
+}
 
-  const joinByCode = () => {
-    if (joinCode.value.length !== 5) return
-    // TODO: join by code API
-    console.log('joining by code:', joinCode.value)
-  }
+const joinByLink = () => {
+    const match = joinLink.value.match(/room\/([A-Z0-9]{4,8})/i)
+    if (match) {
+        joinCode.value = match[1].toUpperCase()
+        joinByCode()
+    }
+}
 
-  const joinByLink = () => {
-    // TODO: extract room ID from link
-    console.log('joining by link:', joinLink.value)
-  }
-
-  const goToActiveRoom = () => {
-    router.push(`/room/${activeRoom.value.id}`)
-  }
-
-  const goToPermanentRoom = (room: any) => {
-    // TODO: navigate to permanent room screen (different from ephemeral)
-    console.log('go to permanent room:', room)
-  }
-
-  const onCloseJoinCode = () => {
-    showJoinCode.value = false
-    joinCode.value = ''
-  }
 </script>
 
 <style scoped>

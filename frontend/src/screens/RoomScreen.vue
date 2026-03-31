@@ -9,14 +9,17 @@
           <ChevronLeft :size="24" style="color: #007AFF" />
         </button>
         <button @click="showSheet = true" class="flex flex-col text-left transition active:opacity-60">
-          <span class="font-bold text-base leading-tight" style="color: #1C1C1E">{{ room.name }}</span>
-          <span class="text-[11px] font-semibold" style="color: #34C759">{{ room.onlineCount }} online</span>
+          <span class="font-bold text-base leading-tight" style="color: #1C1C1E">{{ roomName }}</span>
+          <span class="text-[11px] font-semibold" style="color: #34C759">{{ participants.length }} online</span>
         </button>
       </div>
       <button @click="showSheet = true" class="p-1 transition active:scale-90">
         <MoreHorizontal :size="22" style="color: #8E8E93" />
       </button>
     </header>
+
+    <!-- error display (add near top of sheet content) -->
+    <p v-if="errorMsg" class="text-sm text-red-500 font-medium mb-3">{{ errorMsg }}</p>
 
     <!-- Chat Messages -->
     <main ref="chatContainer"
@@ -124,26 +127,43 @@
         <div class="px-6 py-4 overflow-y-auto">
           <!-- Sheet Header -->
           <div class="flex justify-between items-center mb-5">
-            <h2 class="text-lg font-bold" style="color: #1C1C1E">{{ room.name }}</h2>
+            <div class="flex items-center gap-2 flex-1">
+              <template v-if="editingName">
+                <input
+                  v-model="nameInput"
+                  @keyup.enter="saveName"
+                  @keyup.escape="editingName = false"
+                  @blur="saveName"
+                  autofocus
+                  class="text-lg font-bold bg-transparent border-b-2 outline-none flex-1"
+                  style="color: #1C1C1E; border-color: #007AFF" />
+              </template>
+              <template v-else>
+                <h2 class="text-lg font-bold" style="color: #1C1C1E">{{ roomName }}</h2>
+                <button v-if="isHost" @click="startEditName" class="p-1 transition active:scale-90">
+                  <Pencil :size="14" style="color: #8E8E93" />
+                </button>
+              </template>
+            </div>
             <span class="text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full"
-                  style="background-color: #EAFAF0; color: #34C759">{{ room.onlineCount }} Online</span>
+                  style="background-color: #EAFAF0; color: #34C759">{{ participants.length }} Online</span>
           </div>
 
           <!-- Participants -->
           <div class="flex gap-4 overflow-x-auto pb-4 mb-5">
-            <div v-for="p in participants" :key="p.id"
+            <div v-for="(p, i) in participants" :key="p.participant_id"
                  class="flex flex-col items-center gap-1 flex-shrink-0">
               <div class="relative">
                 <div class="w-14 h-14 rounded-2xl flex items-center justify-center text-white font-bold text-lg"
-                     :style="`background-color: ${p.color}`">
-                  {{ p.name[0].toUpperCase() }}
+                     :style="`background-color: ${participantColor(i)}`">
+                  {{ (p.display_name ?? '?')[0].toUpperCase() }}
                 </div>
                 <!-- Status dot -->
                 <div class="absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white"
-                     :style="`background-color: ${statusColor(p.status)}`" />
+                     :style="`background-color: ${p.is_me ? '#007AFF' : '#34C759'}`" />
               </div>
               <span class="text-[10px] font-bold uppercase tracking-wide w-14 text-center truncate"
-                    style="color: #8E8E93">{{ p.name }}</span>
+                    style="color: #8E8E93">{{ p.display_name ?? 'Unknown' }}</span>
             </div>
           </div>
 
@@ -158,12 +178,15 @@
           <!-- Divider -->
           <div class="mb-4" style="border-top: 1px solid #E5E5EA" />
 
+          <p v-if="errorMsg" class="text-sm font-medium mb-3" style="color: #FF3B30">{{ errorMsg }}</p>
+
           <!-- Action Grid -->
           <div class="grid grid-cols-2 gap-3 pb-8">
-            <button class="flex flex-col items-center justify-center p-4 rounded-2xl text-white transition active:scale-95"
+            <!-- Launch Game button: wire it up -->
+            <button @click="launchGame" :disabled="!isHost || launching" class="flex flex-col items-center justify-center p-4 rounded-2xl text-white transition active:scale-95"
                     style="background-color: #007AFF">
               <Rocket :size="22" class="mb-2" />
-              <span class="text-xs font-bold uppercase tracking-wide">Launch Game</span>
+              <span class="text-xs font-bold uppercase tracking-wide">{{ launching ? 'Launching…' : 'Launch Game' }}</span>
             </button>
             <button class="flex flex-col items-center justify-center p-4 rounded-2xl transition active:scale-95"
                     style="background-color: #EAFAF0; color: #34C759">
@@ -185,6 +208,9 @@
               <LogOut :size="20" />
               <span class="text-xs font-bold uppercase tracking-wide">Leave Room</span>
             </button>
+
+
+
           </div>
         </div>
       </div>
@@ -195,63 +221,129 @@
 </template>
 
 <script setup lang="ts">
-  import { ref } from 'vue'
-  import {
+
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import {
     ChevronLeft, MoreHorizontal, Plus, PlusCircle,
     Send, Smile, CheckCheck, Rocket, Trophy,
-    UserPlus, Settings, LogOut
-  } from 'lucide-vue-next'
-  import BottomNav from '@/components/BottomNav.vue'
+    UserPlus, Settings, LogOut, Pencil
+} from 'lucide-vue-next'
+import { roomApi } from '@/api'
+import { useRoomStore } from '@/stores/room'
+import BottomNav from '@/components/BottomNav.vue'
 
-  // TODO: fetch from API via route param (route.params.id)
-  const room = ref({ name: 'Friday Game Night', onlineCount: 8 })
+const route = useRoute()
+const router = useRouter()
+const roomStore = useRoomStore()
 
-  const showSheet = ref(false)
-  const inputText = ref('')
+const showSheet = ref(false)
+const inputText = ref('')
+const errorMsg = ref('')
+const launching = ref(false)
 
-  const participants = ref([
-    { id: 1, name: 'You',   color: '#007AFF', status: 'online' },
-    { id: 2, name: 'Sarah', color: '#34C759', status: 'playing' },
-    { id: 3, name: 'Mike',  color: '#8E8E93', status: 'idle' },
-    { id: 4, name: 'Léa',   color: '#FF9500', status: 'online' },
-  ])
+// Derive display values from store
+const roomName = computed(() => roomStore.detail?.name ?? '…')
+const editingName = ref(false)
+const nameInput = ref(roomName.value)
+const startEditName = () => {
+  nameInput.value = roomName.value ?? ''
+  editingName.value = true
+}
+const saveName = async () => {
+    editingName.value = false
+    const trimmed = nameInput.value.trim()
+    if (!trimmed || trimmed === roomStore.detail?.name) return
+    try {
+        await roomApi.rename(route.params.id as string, trimmed)
+        // Patch store directly — no need for full re-fetch
+        if (roomStore.detail) roomStore.detail.name = trimmed
+    } catch (e: unknown) {
+        errorMsg.value = e instanceof Error ? e.message : 'Failed to rename'
+    }
+}
+const participants = computed(() => roomStore.detail?.participants ?? [])
+const isHost = computed(() => roomStore.detail?.is_host ?? false)
+const activeMatchId = computed(() => roomStore.detail?.active_match_id ?? null)
+const availableGames = computed(() => roomStore.detail?.available_games ?? [])
 
-  const statusColor = (status: string) => {
-    if (status === 'online')  return '#34C759'
-    if (status === 'playing') return '#007AFF'
-    if (status === 'idle')    return '#C7C7CC'
-    return '#C7C7CC'
-  }
-
-  const statusLegend = [
+// Participant colours (stable per index)
+const COLORS = ['#007AFF', '#34C759', '#FF9500', '#FF3B30', '#AF52DE', '#5AC8FA']
+const participantColor = (index: number) => COLORS[index % COLORS.length]
+// Add after participantColor:
+const statusLegend = [
     { label: 'Online',  color: '#34C759' },
     { label: 'Playing', color: '#007AFF' },
     { label: 'Idle',    color: '#C7C7CC' },
-  ]
+]
 
-  // TODO: fetch from API
-  const messages = ref([
-    { id: 1, type: 'chat', isMine: false, author: 'Alex', avatarColor: '#FF9500', text: 'Is everyone ready for tonight?', time: '18:42' },
-    { id: 2, type: 'chat', isMine: true,  author: 'You',  avatarColor: '#007AFF', text: 'Count me in! 🍕', time: '18:45' },
-    { id: 3, type: 'system', text: 'Sarah joined the room' },
-    { id: 4, type: 'chat', isMine: false, author: 'Sarah', avatarColor: '#34C759', text: 'Board is looking legendary! 🎲', time: '18:47' },
-  ])
+// Chat (local only for now — WebSocket in next step)
+const messages = ref<{ id: number; type: string; isMine: boolean; author: string; avatarColor: string; text: string; time: string }[]>([])
+const chatContainer = ref<HTMLElement | null>(null)
 
-  const chatContainer = ref<HTMLElement | null>(null)
-
-  const sendMessage = () => {
+const sendMessage = () => {
     if (!inputText.value.trim()) return
     messages.value.push({
-      id: Date.now(),
-      type: 'chat',
-      isMine: true,
-      author: 'You',
-      avatarColor: '#007AFF',
-      text: inputText.value.trim(),
-      time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+        id: Date.now(),
+        type: 'chat',
+        isMine: true,
+        author: 'You',
+        avatarColor: '#007AFF',
+        text: inputText.value.trim(),
+        time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
     })
     inputText.value = ''
-  }
+}
+
+// If there's already an active match, go straight to it
+const goToActiveMatch = () => {
+    if (activeMatchId.value) router.push(`/match/${activeMatchId.value}`)
+}
+
+// Host launches a game — for now auto-picks connect_four with all participants as players
+const launchGame = async () => {
+    if (!isHost.value || launching.value) return
+    errorMsg.value = ''
+    launching.value = true
+    try {
+        const roomCode = route.params.id as string
+        const gameId = 'connect_four'
+        const playersIds = (roomStore.detail?.participants ?? []).map(p => p.participant_id)
+        const result = await roomApi.startGame(roomCode, gameId, playersIds)
+        console.log('Start game result:', result)
+        // router.push(`/match/${result.match_id}`)
+    } catch (e: unknown) {
+        errorMsg.value = e instanceof Error ? e.message : 'Failed to start game'
+    } finally {
+        launching.value = false
+    }
+
+    console.log('Error message set to:', errorMsg.value)
+}
+
+// Polling: re-fetch room every 3s so non-host sees when match starts
+let pollInterval: ReturnType<typeof setInterval>
+onMounted(async () => {
+    const roomCode = route.params.id as string
+    await roomStore.fetchRoom(roomCode)
+    // If match already active on load, go there
+    if (activeMatchId.value) {
+        router.push(`/match/${activeMatchId.value}`)
+        return
+    }
+    pollInterval = setInterval(async () => {
+        await roomStore.fetchRoom(roomCode)
+        if (activeMatchId.value) {
+            clearInterval(pollInterval)
+            router.push(`/match/${activeMatchId.value}`)
+        }
+    }, 3000)
+})
+onUnmounted(() => {
+    clearInterval(pollInterval)
+    roomStore.clear()
+})
+
 </script>
 
 <style scoped>
