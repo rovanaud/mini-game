@@ -145,8 +145,8 @@ def create_game_match(
     config: dict | None = None,
 ) -> tuple[GameMatch, RoomTable]:
     # TODO : Verify if all participants are not currently in another active match
-    if get_participant_room_id(created_by_participant) != room.room_id:
-        raise ValueError("Participant does not belong to the given room.")
+    if get_participant_room_id(created_by_participant) != str(room.room_id):
+        raise ValueError("Participant does not belong to the given room. ")
 
     game = GameDefinition.objects.filter(game_id=game_id).first()
     if game is None:
@@ -161,7 +161,7 @@ def create_game_match(
 
     players = list(
         Participant.objects.filter(
-            participant_id__in=normalized_participant_ids, room=room.room_id
+            participant_id__in=normalized_participant_ids, room=room
         )
     )
 
