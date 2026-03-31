@@ -1,10 +1,10 @@
-from apps.games.empty_game.module import EmptyGameGameModule
+from apps.games.empty_game.module import EmptyGameModule
 from apps.games.errors import UnsupportedGameError
 from apps.games.spi import GameModule
 from apps.games.vowel_game.module import VowelGameModule
 
-_GAME_MODULES = {
-    "empty_game": EmptyGameGameModule(),
+_GAME_MODULES: dict[str, GameModule] = {
+    "empty_game": EmptyGameModule(),
     "vowel_game": VowelGameModule(),
 }
 

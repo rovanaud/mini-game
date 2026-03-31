@@ -1,18 +1,34 @@
+# LEGACY: This module predates the full GameModule SPI.
+# It does not implement: get_metadata, resolve_outcome,
+# GameInterruptionPolicy, GameVisibilityPolicy, GameBotAdapter.
+# Use connect_four as the reference implementation instead.
+
 from __future__ import annotations
 
 from copy import deepcopy
 
+from apps.games.base import GameBaseModule
 from apps.games.spi import (
     GameActionResult,
     GameActorContext,
     GameExecutionContext,
     GameSetupContext,
 )
+from apps.games.types import GameMetadata, GameOutcome
 
 
-class VowelGameModule:
+class VowelGameModule(GameBaseModule):
     game_id = "vowel_game"
     ALLOWED_VOWELS = ("A", "E", "I", "O", "U")
+
+    def get_metadata(self) -> GameMetadata:
+        return GameMetadata(
+            game_id=self.game_id,
+            display_name="Vowel Game",
+            min_players=2,
+            max_players=2,
+            supports_spectators=True,
+        )
 
     def validate_config(self, config: dict) -> None:
         # Keep it simple for now: no special config
@@ -33,6 +49,7 @@ class VowelGameModule:
             "prev_turn_seat": context.seat_participant_ids[0],
             "winner_seat": None,
             "outcome": None,
+            "last_move": None,
         }
 
     def validate_action(
@@ -78,24 +95,6 @@ class VowelGameModule:
         played_vowels: list[str] = new_state["played_vowels"]
         played_by: dict[str, str] = new_state["played_by"]
 
-        if vowel in played_vowels:
-            # Invalid repeated proposal => acting player loses immediately
-            winner_seat = state.get("prev_turn_seat")
-            new_state["status"] = "completed"
-            new_state["winner_seat"] = winner_seat
-            new_state["outcome"] = "invalid_repeat_loss"
-
-            return GameActionResult(
-                new_state=new_state,
-                is_terminal=True,
-                outcome_type="win",
-                winner_summary={
-                    "winner_seat": winner_seat,
-                    "loser_seat": actor.participant_id,
-                    "reason": "invalid_repeat_loss",
-                },
-            )
-
         played_vowels.append(vowel)
         played_by[vowel] = actor.participant_id
 
@@ -105,21 +104,77 @@ class VowelGameModule:
             new_state["winner_seat"] = None
             new_state["outcome"] = "draw_exhausted"
 
-            return GameActionResult(
-                new_state=new_state,
-                is_terminal=True,
-                outcome_type="draw",
-                winner_summary={
-                    "winner_seat": None,
-                    "reason": "draw_exhausted",
-                },
-            )
-
-        new_state["prev_turn_seat"] = actor.participant_id
+        # new_state["prev_turn_seat"] = actor.participant_id
+        new_state["last_move"] = vowel
 
         return GameActionResult(
             new_state=new_state,
-            is_terminal=False,
-            outcome_type=None,
-            winner_summary=None,
+        )
+
+    def resolve_outcome(
+        self,
+        state: dict,
+        last_action_type: str,
+        last_actor: GameActorContext,
+    ) -> GameOutcome | None:
+        if state.get("outcome") == "resign":
+            resigned_seat = state["resigned_seat"]
+            winner_seat = 1 - resigned_seat
+            return GameOutcome(
+                outcome_type="win",
+                winner_summary={
+                    "winner_seat": winner_seat,
+                    "loser_seat": resigned_seat,
+                    "reason": "resignation",
+                    "move_count": state["move_count"],
+                },
+            )
+
+        vowel = state.get("last_move", None)
+        played_vowels = state.get("played_vowels", [])
+
+        if vowel in played_vowels:
+            # Invalid repeated proposal => acting player loses immediately
+            winner_seat = state.get("prev_turn_seat")
+            state["status"] = "completed"
+            state["winner_seat"] = winner_seat
+            state["outcome"] = "invalid_repeat_loss"
+            return GameOutcome(
+                outcome_type="win",
+                winner_summary={
+                    "winner_seat": winner_seat,
+                    "loser_seat": last_actor.participant_id,
+                    "reason": "invalid_repeat",
+                    "move_count": len(played_vowels),
+                },
+            )
+
+        state["prev_turn_seat"] = last_actor.participant_id
+
+    # --- InterruptionPolicy defaults ---
+
+    def can_pause(self, state: dict, actor: GameActorContext) -> bool:
+        return False
+
+    def can_resume(self, state: dict, actor: GameActorContext) -> bool:
+        return False
+
+    def can_abandon(self, state: dict, actor: GameActorContext) -> bool:
+        return True  # abandon is always allowed by default
+
+    # --- VisibilityPolicy default: full state, no hidden info ---
+
+    def filter_state_for_actor(self, state: dict, actor: GameActorContext) -> dict:
+        return state  # override in games with hidden information
+
+    # --- BotAdapter default: unsupported ---
+
+    def generate_bot_action(
+        self,
+        state: dict,
+        bot_seat: GameActorContext,
+        context: GameExecutionContext,
+    ) -> tuple[str, dict]:
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not support bot actions."
         )
