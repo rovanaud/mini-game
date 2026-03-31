@@ -7,7 +7,11 @@ from django.utils import timezone
 
 import apps.adminops.types as event_types
 from apps.adminops.events import log_event
-from apps.identities.models import UserIdentity
+from apps.identities.models import IdentityType, UserIdentity
+from apps.rooms.errors import (
+    GuestNotAllowedError,
+    RoomJoinNotAllowedError,
+)
 from apps.rooms.models import (
     ConnectionStatus,
     Participant,
@@ -115,6 +119,12 @@ def join_room(
     identity: UserIdentity,
     room: Room,
 ) -> Participant:
+    if room.is_permanent:
+        raise RoomJoinNotAllowedError(
+            "Permanent rooms cannot be joined by public code. "
+            "You must be added by the host."
+        )
+
     now = timezone.now()
 
     existing = (
@@ -241,6 +251,139 @@ def leave_room(participant: Participant) -> Participant:
         room_id=get_participant_room_id(participant),
         participant_id=participant.participant_id,
         actor_identity_id=participant.identity.identity_id,
+    )
+
+    return participant
+
+
+@transaction.atomic
+def create_permanent_room(
+    identity: UserIdentity,
+    *,
+    name: str = "New Room",
+) -> tuple[Room, Participant, RoomTable]:
+    if identity.identity_type == IdentityType.GUEST:
+        raise GuestNotAllowedError("Guests cannot create permanent rooms.")
+
+    now = timezone.now()
+
+    room = Room.objects.create(
+        public_code=_generate_unique_room_code(),
+        invite_token=_generate_unique_invite_token(),
+        name=name,
+        is_permanent=True,
+        status=RoomStatus.OPEN,
+        visibility=RoomVisibility.PRIVATE,
+        created_by_identity=identity,
+        last_activity_at=now,
+        expires_at=None,  # permanent rooms never expire
+        settings_json={},
+    )
+
+    lobby_table = RoomTable.objects.create(
+        room=room,
+        table_type=TableType.LOBBY,
+        name="Lobby",
+        status=TableStatus.OPEN,
+    )
+
+    participant = Participant.objects.create(
+        room=room,
+        identity=identity,
+        status=ParticipantStatus.IDLE,
+        connection_status=ConnectionStatus.CONNECTED,
+        current_table=lobby_table,
+        is_host=True,
+        last_active_at=now,
+    )
+
+    room.host_participant = participant
+    room.save(update_fields=["host_participant", "updated_at"])
+
+    ParticipantRoleAssignment.objects.create(
+        participant=participant,
+        role_type=RoleType.HOST,
+        scope_type=RoleScopeType.ROOM,
+        scope_id=room.room_id,
+        granted_by_participant=None,
+    )
+
+    log_event(
+        event_types.ROOM_CREATED,
+        room_id=room.room_id,
+        participant_id=participant.participant_id,
+        actor_identity_id=identity.identity_id,
+        payload={"public_code": room.public_code, "is_permanent": True, "name": name},
+    )
+
+    return room, participant, lobby_table
+
+
+@transaction.atomic
+def add_member_to_permanent_room(
+    room: Room,
+    identity: UserIdentity,
+    *,
+    added_by: Participant,
+) -> Participant:
+    """
+    Directly adds a registered identity as a permanent member.
+    This is the placeholder for the future invite flow —
+    when RoomInvite is built, this becomes the acceptance step.
+    """
+    if not room.is_permanent:
+        raise ValueError("add_member_to_permanent_room called on a non-permanent room.")
+
+    if identity.identity_type == IdentityType.GUEST:
+        raise GuestNotAllowedError("Guests cannot be members of permanent rooms.")
+
+    # Idempotent — if already a member, return existing participant
+    existing = Participant.objects.filter(
+        room=room,
+        identity=identity,
+        status__in=[
+            ParticipantStatus.IDLE,
+            ParticipantStatus.JOINING,
+            ParticipantStatus.WAITING,
+            ParticipantStatus.PLAYING,
+            ParticipantStatus.SPECTATING,
+        ],
+    ).first()
+    if existing:
+        return existing
+
+    now = timezone.now()
+
+    lobby_table = RoomTable.objects.filter(
+        room=room,
+        table_type=TableType.LOBBY,
+        status__in=[TableStatus.OPEN, TableStatus.ACTIVE],
+    ).first()
+
+    participant = Participant.objects.create(
+        room=room,
+        identity=identity,
+        status=ParticipantStatus.IDLE,
+        connection_status=ConnectionStatus.DISCONNECTED_EXPIRED,  # not online yet
+        current_table=lobby_table,
+        is_host=False,
+        last_active_at=now,
+    )
+
+    ParticipantRoleAssignment.objects.create(
+        participant=participant,
+        role_type=RoleType.PLAYER,
+        scope_type=RoleScopeType.ROOM,
+        scope_id=room.room_id,
+        granted_by_participant=added_by,
+    )
+
+    log_event(
+        event_types.ROOM_JOINED,
+        room_id=room.room_id,
+        participant_id=participant.participant_id,
+        actor_identity_id=identity.identity_id,
+        payload={"added_by": str(added_by.participant_id), "is_permanent": True},
     )
 
     return participant

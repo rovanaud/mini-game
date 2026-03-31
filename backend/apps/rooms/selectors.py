@@ -1,10 +1,12 @@
 from django.db import models
 from django.utils import timezone
 
+from apps.identities.models import UserIdentity
 from apps.matches.models import GameMatch
 from apps.rooms.models import (
     Participant,
     ParticipantRoleAssignment,
+    ParticipantStatus,
     RoleScopeType,
     RoleType,
     Room,
@@ -84,3 +86,19 @@ def get_participant_roles(participant: Participant) -> list[ParticipantRoleAssig
             models.Q(expires_at__isnull=True) | models.Q(expires_at__gt=timezone.now())
         )
     )
+
+
+def get_permanent_rooms_for_identity(identity: UserIdentity) -> models.query.QuerySet:
+    """
+    Returns all permanent rooms where this identity is an active participant.
+    Used by RoomsSpace.vue via GET /api/players/me/rooms/?permanent=true
+    """
+    return Room.objects.filter(
+        is_permanent=True,
+        participants__identity=identity,
+        participants__status__in=[
+            ParticipantStatus.IDLE,
+            ParticipantStatus.WAITING,
+            ParticipantStatus.PLAYING,
+        ],
+    ).order_by("-last_activity_at")

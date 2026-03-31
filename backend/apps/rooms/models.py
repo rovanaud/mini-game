@@ -52,6 +52,8 @@ class ConnectionStatus(models.TextChoices):
 
 class Room(models.Model):
     room_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    is_permanent = models.BooleanField(default=False)
+    name = models.CharField(max_length=128, default="Room Name")
     public_code = models.CharField(max_length=32, unique=True)
     invite_token = models.CharField(max_length=255, unique=True)
     status = models.CharField(
