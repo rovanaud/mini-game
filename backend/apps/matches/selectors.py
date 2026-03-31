@@ -47,10 +47,10 @@ def get_actor_context(game_match: GameMatch, participant_id: str) -> GameActorCo
     )
 
 
-def get_game_match_room_id(game_match: GameMatch) -> int:
-    return game_match.room_id  # type: ignore[attr-defined]
+def get_game_match_room_id(game_match: GameMatch) -> str:
+    return str(game_match.room_id)  # type: ignore[attr-defined]
 
 
 def get_game_match_game_id(game_match: GameMatch) -> str:
     # game_id is a foreign key to GameDefinition, and is equivalent to game_id
-    return game_match.game_id  # type: ignore[attr-defined]
+    return str(game_match.game_id)  # type: ignore[attr-defined]
