@@ -54,6 +54,7 @@ class GameMatch(models.Model):
     started_at = models.DateTimeField(null=True, blank=True)
     ended_at = models.DateTimeField(null=True, blank=True)
     paused_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(null=True, blank=True, auto_now=True)
     resumable = models.BooleanField(default=False)
     termination_reason = models.CharField(max_length=128, null=True, blank=True)
     winner_summary_json = models.JSONField(null=True, blank=True)
