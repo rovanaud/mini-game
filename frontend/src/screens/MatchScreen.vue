@@ -61,15 +61,15 @@
            style="background-color: #EAF3FF">
         <div class="w-2 h-2 rounded-full animate-pulse" style="background-color: #007AFF" />
         <span class="text-[10px] font-bold uppercase tracking-widest" style="color: #007AFF">
-          {{ match.game_key.replace('_', ' ') }}
+          {{ gameKey.replace('_', ' ') }}
         </span>
       </div>
 
       <!-- Dynamic game component -->
       <component
         :is="gameBoardComponent"
-        :state="match.game_state"
-        :config="match.game_config"
+        :state="gameState as unknown as ConnectFourState"
+        :config="gameConfig as unknown as ConnectFourConfig"
         :is-my-turn="isMyTurn"
         :my-player-index="myPlayerIndex"
         @action="submitAction"
@@ -81,7 +81,7 @@
            style="background-color: #FFFFFF">
         <Puzzle :size="40" style="color: #C7C7CC" />
         <p class="text-sm font-semibold" style="color: #8E8E93">
-          Game "{{ match.game_key }}" not yet available.
+          Game "{{ gameKey }}" not yet available.
         </p>
       </div>
 
@@ -188,7 +188,7 @@
                    class="flex-1 bg-transparent border-none outline-none text-sm"
                    style="color: #1C1C1E" />
           </div>
-          <<button @click="sendChatMessage"
+          <button @click="sendChatMessage"
                   class="w-9 h-9 rounded-full flex items-center justify-center transition-all duration-150"
                   :class="sendPulse ? 'scale-125' : 'scale-100 active:scale-90'"
                   style="background-color: #007AFF">
@@ -260,178 +260,126 @@
 <script setup lang="ts">
 
   import { ref, computed, onMounted, onUnmounted, type Component } from 'vue'
-  import { useRoute } from 'vue-router'
-  import {
-    ChevronLeft, Timer, MessageSquare,
-    Smile, Zap, Flag, Send, Puzzle
-  } from 'lucide-vue-next'
-  import type { Match, TimerConfig } from '@/types'
-  import ConnectFourBoard from '@/components/games/ConnectFourBoard.vue'
+import { useRoute } from 'vue-router'
+import {
+  ChevronLeft, Timer, MessageSquare,
+  Smile, Zap, Flag, Send, Puzzle
+} from 'lucide-vue-next'
+import type { TimerConfig } from '@/types'
+import type { ConnectFourState, ConnectFourConfig } from '@/types'
+import ConnectFourBoard from '@/components/games/ConnectFourBoard.vue'
+import { useMatchStore } from '@/stores/match'
 
-  const gameRegistry: Record<string, Component> = {
-    connect_four: ConnectFourBoard,
+const gameRegistry: Record<string, Component> = {
+  connect_four: ConnectFourBoard,
+}
+
+const route = useRoute()
+const matchStore = useMatchStore()
+
+// ── Data from store ───────────────────────────────────────────
+const gameState = computed(() => matchStore.detail?.game_state ?? {})
+const gameConfig = computed(() => matchStore.detail?.game_config ?? {})
+const gameKey = computed(() => matchStore.detail?.game_key ?? '')
+const myPlayerIndex = computed(() => matchStore.detail?.my_seat_index ?? 0)
+
+const isMyTurn = computed(() => {
+  const state = gameState.value as Partial<ConnectFourState>
+  return state.current_turn_seat === myPlayerIndex.value
+})
+
+const gameBoardComponent = computed(() => gameRegistry[gameKey.value] ?? null)
+
+// Opponent: the seat that is not mine
+const opponent = computed(() => {
+  const seats = matchStore.detail?.seats ?? []
+  const opp = seats.find(s => s.seat_index !== myPlayerIndex.value)
+  return {
+    name: opp?.display_name ?? 'Opponent',
+    color: '#34C759',
   }
+})
 
-  const route = useRoute()
+// ── Actions ───────────────────────────────────────────────────
+const submitAction = (action: { type: string; payload: Record<string, unknown> }) => {
+  matchStore.submitAction(action.type, action.payload)
+}
 
-  const match = ref<Match>({
-    id: route.params.id as string,
-    game_key: 'connect_four',
-    game_config: { rows: 6, cols: 7, win_length: 4 },
-    game_state: {
-      board: Array.from({ length: 6 }, () => Array(7).fill(0)),
-      current_player: 1,
-      winner: null,
-      winning_cells: null,
-    },
-    config: {
-      timer: {
-        enabled: true,
-        mode: 'per_move',
-        seconds_per_move: 60,
-        allow_time_request: true,
-        time_request_seconds: 15,
-        max_time_requests: 2,
-      }
-    }
-  })
+// ── Timer ─────────────────────────────────────────────────────
+const timerConfig = computed<TimerConfig>(() => {
+  const cfg = matchStore.detail?.game_config as any
+  return cfg?.timer ?? { enabled: false, mode: 'per_move', allow_time_request: false }
+})
+const seconds = ref(0)
+const timeRequestsLeft = ref(timerConfig.value.max_time_requests ?? 0)
+const timerWarning = computed(() =>
+  timerConfig.value.enabled &&
+  timerConfig.value.mode === 'per_move' &&
+  ((timerConfig.value.seconds_per_move ?? 60) - seconds.value) <= 10
+)
+const formattedTime = computed(() => {
+  const s = timerConfig.value.mode === 'per_move'
+    ? Math.max(0, (timerConfig.value.seconds_per_move ?? 60) - seconds.value)
+    : seconds.value
+  const m = Math.floor(s / 60).toString().padStart(2, '0')
+  const sec = (s % 60).toString().padStart(2, '0')
+  return `${m}:${sec}`
+})
+const requestTime = () => {
+  if (timeRequestsLeft.value <= 0) return
+  timeRequestsLeft.value--
+  seconds.value = Math.max(0, seconds.value - (timerConfig.value.time_request_seconds ?? 15))
+}
 
-  // Seed demo board
-  const board = match.value.game_state.board as number[][]
-  board[5][1] = 2; board[4][1] = 1
-  board[5][2] = 1; board[5][3] = 2
+let timerInterval: ReturnType<typeof setInterval>
+onMounted(async () => {
+  await matchStore.fetchMatch(route.params.id as string)
+  timerInterval = setInterval(() => {
+    if (isMyTurn.value && timerConfig.value.enabled) seconds.value++
+  }, 1000)
+})
+onUnmounted(() => {
+  clearInterval(timerInterval)
+  matchStore.clear()
+})
 
-  const myPlayerIndex = ref(1)
-  const isMyTurn = computed(() =>
-    (match.value.game_state.current_player as number) === myPlayerIndex.value
-  )
-  const gameBoardComponent = computed(() =>
-    gameRegistry[match.value.game_key] ?? null
-  )
-  const opponent = ref({ name: 'Sarah', color: '#34C759' })
+// ── Chat ─────────────────────────────────────────────────────
+const showChat = ref(false)
+const chatInput = ref('')
+const unreadCount = ref(0)
+const chatMessages = ref<{ id: number; isMine: boolean; text: string }[]>([])
+const sendPulse = ref(false)
+const sendChatMessage = () => {
+  if (!chatInput.value.trim()) return
+  chatMessages.value.push({ id: Date.now(), isMine: true, text: chatInput.value.trim() })
+  chatInput.value = ''
+  sendPulse.value = true
+  setTimeout(() => { sendPulse.value = false }, 150)
+}
 
-  const submitAction = (action: { type: string; payload: Record<string, unknown> }) => {
-    console.log('action submitted:', action)
-    if (action.type === 'drop_disc') {
-      const col = action.payload.col as number
-      const b = match.value.game_state.board as number[][]
-      const rows = (match.value.game_config.rows as number)
-      for (let row = rows - 1; row >= 0; row--) {
-        if (b[row][col] === 0) {
-          b[row][col] = myPlayerIndex.value
-          match.value.game_state.current_player = 2
-          break
-        }
-      }
-    }
-  }
+// ── Reactions ─────────────────────────────────────────────────
+const showReactions = ref(false)
+const reactions = ['👏', '🔥', '😂', '😮', '❤️', '👎']
+interface ActiveReaction { id: number; emoji: string; x: number }
+const activeReactions = ref<ActiveReaction[]>([])
+const sendReaction = (emoji: string) => {
+  showReactions.value = false
+  chatMessages.value.push({ id: Date.now(), isMine: true, text: emoji + ' reacted' })
+  unreadCount.value += showChat.value ? 0 : 1
+  const id = Date.now()
+  activeReactions.value.push({ id, emoji, x: 20 + Math.random() * 60 })
+  setTimeout(() => {
+    activeReactions.value = activeReactions.value.filter(r => r.id !== id)
+  }, 1600)
+}
 
-  // Timer
-  const timerConfig = computed<TimerConfig>(() => match.value.config.timer)
-  const seconds = ref(0)
-  const timeRequestsLeft = ref(timerConfig.value.max_time_requests ?? 0)
-  const timerWarning = computed(() =>
-    timerConfig.value.enabled &&
-    timerConfig.value.mode === 'per_move' &&
-    ((timerConfig.value.seconds_per_move ?? 60) - seconds.value) <= 10
-  )
-  const formattedTime = computed(() => {
-    const s = timerConfig.value.mode === 'per_move'
-      ? Math.max(0, (timerConfig.value.seconds_per_move ?? 60) - seconds.value)
-      : seconds.value
-    const m = Math.floor(s / 60).toString().padStart(2, '0')
-    const sec = (s % 60).toString().padStart(2, '0')
-    return `${m}:${sec}`
-  })
-  const requestTime = () => {
-    if (timeRequestsLeft.value <= 0) return
-    timeRequestsLeft.value--
-    seconds.value = Math.max(0, seconds.value - (timerConfig.value.time_request_seconds ?? 15))
-    // TODO: broadcast via WebSocket
-  }
-
-  let timerInterval: ReturnType<typeof setInterval>
-  onMounted(() => {
-    timerInterval = setInterval(() => {
-      if (isMyTurn.value && timerConfig.value.enabled) seconds.value++
-    }, 1000)
-  })
-  onUnmounted(() => clearInterval(timerInterval))
-
-  // Chat
-  const showChat = ref(false)
-  const chatInput = ref('')
-  const unreadCount = ref(0)
-  const chatMessages = ref([
-    { id: 1, isMine: false, text: 'Good luck! 🎯' },
-    { id: 2, isMine: true,  text: 'You too!' },
-  ])
-  // const sendChatMessage = () => {
-  //   if (!chatInput.value.trim()) return
-  //   chatMessages.value.push({ id: Date.now(), isMine: true, text: chatInput.value.trim() })
-  //   chatInput.value = ''
-  // }
-
-  // Reactions
-  const showReactions = ref(false)
-  const reactions = ['👏', '🔥', '😂', '😮', '❤️', '👎']
-
-  // ── Floating reactions ────────────────────────────────────────
-  interface ActiveReaction {
-    id: number
-    emoji: string
-    x: number  // horizontal position as % of screen width
-  }
-
-  const activeReactions = ref<ActiveReaction[]>([])
-
-  const sendReaction = (emoji: string) => {
-    showReactions.value = false
-
-    // Add to chat log
-    chatMessages.value.push({
-      id: Date.now(),
-      isMine: true,
-      text: emoji + ' reacted',
-    })
-    unreadCount.value += showChat.value ? 0 : 1
-
-    // Spawn floating animation
-    const id = Date.now()
-    activeReactions.value.push({
-      id,
-      emoji,
-      x: 20 + Math.random() * 60,  // random horizontal position between 20–80%
-    })
-    setTimeout(() => {
-      activeReactions.value = activeReactions.value.filter(r => r.id !== id)
-    }, 1600)
-
-    // TODO: broadcast via WebSocket
-  }
-
-  // ── Send pulse ────────────────────────────────────────────────
-  const sendPulse = ref(false)
-
-  const sendChatMessage = () => {
-    if (!chatInput.value.trim()) return
-    chatMessages.value.push({ id: Date.now(), isMine: true, text: chatInput.value.trim() })
-    chatInput.value = ''
-
-    // Trigger pulse animation
-    sendPulse.value = true
-    setTimeout(() => { sendPulse.value = false }, 150)
-
-    // TODO: send via WebSocket
-  }
-
-  // Resign
-  const showResignConfirm = ref(false)
-  const confirmResign = () => { showResignConfirm.value = true }
-  const resign = () => {
-    showResignConfirm.value = false
-    // TODO: send resign via WebSocket
-  }
+// ── Resign ────────────────────────────────────────────────────
+const showResignConfirm = ref(false)
+const confirmResign = () => { showResignConfirm.value = true }
+const resign = () => {
+  showResignConfirm.value = false
+  matchStore.submitAction('resign', {})
+}
 
 </script>
 

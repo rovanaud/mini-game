@@ -1,59 +1,47 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { Match } from '@/types'
+import { matchApi } from '@/api'
+import type { MatchDetail } from '@/api'
 
 export const useMatchStore = defineStore('match', () => {
-    // ── State ───────────────────────────────────────────────────
-    const currentMatchId = ref<string | null>(null)
-    const match = ref<Match>({
-        id: '',
-        game_key: '',
-        game_config: {},
-        game_state: {},
-        config: {
-            timer: {
-                enabled: false,
-                mode: 'per_move',
-                allow_time_request: false,
+    const matchId = ref<string | null>(null)
+    const detail = ref<MatchDetail | null>(null)
+    const loading = ref(false)
+    const error = ref<string | null>(null)
 
-            },
+    const fetchMatch = async (id: string) => {
+        loading.value = true
+        error.value = null
+        try {
+            detail.value = await matchApi.detail(id)
+            matchId.value = id
+        } catch (e: unknown) {
+            error.value = e instanceof Error ? e.message : 'Unknown error'
+        } finally {
+            loading.value = false
         }
-    })
-
-    // ── Actions ─────────────────────────────────────────────────
-    const enterMatch = (matchId: string, matchData: Match) => {
-        currentMatchId.value = matchId
-        match.value = matchData
     }
 
-    const leaveMatch = () => {
-        currentMatchId.value = null
-        match.value = {
-            id: '',
-            game_key: '',
-            game_config: {},
-            game_state: {},
-            config: {
-                timer: {
-                    enabled: false,
-                    mode: 'per_move',
-                    allow_time_request: false,
-
-                },
+    const submitAction = async (actionType: string, actionPayload: Record<string, unknown>) => {
+        if (!matchId.value) return
+        error.value = null
+        try {
+            const result = await matchApi.submitAction(matchId.value, actionType, actionPayload)
+            // Patch game_state in place — no full re-fetch needed
+            if (detail.value) {
+                detail.value.game_state = result.game_state
+                detail.value.match_state = result.match_state
             }
+        } catch (e: unknown) {
+            error.value = e instanceof Error ? e.message : 'Unknown error'
         }
     }
 
-    const submitAction = (action: { type: string; payload: Record<string, unknown> }) => {
-        // TODO: send to WebSocket
-        console.log('Match action:', action)
+    const clear = () => {
+        matchId.value = null
+        detail.value = null
+        error.value = null
     }
 
-    return {
-        currentMatchId,
-        match,
-        enterMatch,
-        leaveMatch,
-        submitAction,
-    }
+    return { matchId, detail, loading, error, fetchMatch, submitAction, clear }
 })

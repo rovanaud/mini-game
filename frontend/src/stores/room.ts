@@ -1,55 +1,29 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { roomApi } from '@/api'
+import type { RoomDetail } from '@/api'
 
 export const useRoomStore = defineStore('room', () => {
-    // ── State ───────────────────────────────────────────────────
-    const currentRoomId = ref<string | null>(null)
-    const room = ref({
-        id: '',
-        name: '',
-        onlineCount: 0,
-    })
+    const detail = ref<RoomDetail | null>(null)
+    const loading = ref(false)
+    const error = ref<string | null>(null)
 
-    const participants = ref([
-        { id: 1, name: 'You', color: '#007AFF', status: 'online' as const },
-        { id: 2, name: 'Sarah', color: '#34C759', status: 'playing' as const },
-        { id: 3, name: 'Mike', color: '#8E8E93', status: 'idle' as const },
-    ])
-
-    const messages = ref([
-        { id: 1, isMine: false, author: 'Alex', text: 'Is everyone ready?', time: '18:42' },
-        { id: 2, isMine: true, author: 'You', text: 'Count me in! 🍕', time: '18:45' },
-    ])
-
-    // ── Actions ─────────────────────────────────────────────────
-    const enterRoom = (roomId: string, roomData: any) => {
-        currentRoomId.value = roomId
-        room.value = roomData
+    const fetchRoom = async (roomCode: string) => {
+        loading.value = true
+        error.value = null
+        try {
+            detail.value = await roomApi.detail(roomCode)
+        } catch (e: unknown) {
+            error.value = e instanceof Error ? e.message : 'Unknown error'
+        } finally {
+            loading.value = false
+        }
     }
 
-    const leaveRoom = () => {
-        currentRoomId.value = null
-        room.value = { id: '', name: '', onlineCount: 0 }
-        messages.value = []
+    const clear = () => {
+        detail.value = null
+        error.value = null
     }
 
-    const sendMessage = (text: string) => {
-        messages.value.push({
-            id: Date.now(),
-            isMine: true,
-            author: 'You',
-            text,
-            time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
-        })
-    }
-
-    return {
-        currentRoomId,
-        room,
-        participants,
-        messages,
-        enterRoom,
-        leaveRoom,
-        sendMessage,
-    }
+    return { detail, loading, error, fetchRoom, clear }
 })
