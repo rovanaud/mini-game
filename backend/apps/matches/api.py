@@ -12,6 +12,7 @@ from apps.matches.models import GameMatch
 from apps.matches.runtime import submit_action
 from apps.matches.selectors import (
     get_game_match_game_id,
+    get_game_match_room_id,
     get_match_seats_with_participant_identity,
 )
 from apps.rooms.models import Participant
@@ -59,6 +60,7 @@ def api_match_detail(request, match_id):
         {
             "match_id": str(match.game_match_id),
             "game_key": get_game_match_game_id(match),
+            "room_id": get_game_match_room_id(match),
             "game_config": match.config_json or {},
             "game_state": match.snapshot_state_json or {},
             "match_state": match.state,

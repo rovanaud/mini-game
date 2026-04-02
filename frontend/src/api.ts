@@ -110,6 +110,7 @@ export interface MatchSeat {
 
 export interface MatchDetail {
     match_id: string
+    room_id: string
     game_key: string
     game_config: Record<string, unknown>
     game_state: Record<string, unknown>
