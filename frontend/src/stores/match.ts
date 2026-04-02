@@ -9,6 +9,8 @@ export const useMatchStore = defineStore('match', () => {
     const loading = ref(false)
     const error = ref<string | null>(null)
 
+    // Initial HTTP load — fetches config + seats (also provided by WS on connect,
+    // but HTTP gives us something to render before the socket opens)
     const fetchMatch = async (id: string) => {
         loading.value = true
         error.value = null
@@ -22,19 +24,21 @@ export const useMatchStore = defineStore('match', () => {
         }
     }
 
-    const submitAction = async (actionType: string, actionPayload: Record<string, unknown>) => {
-        if (!matchId.value) return
-        error.value = null
-        try {
-            const result = await matchApi.submitAction(matchId.value, actionType, actionPayload)
-            // Patch game_state in place — no full re-fetch needed
-            if (detail.value) {
-                detail.value.game_state = result.game_state
-                detail.value.match_state = result.match_state
-            }
-        } catch (e: unknown) {
-            error.value = e instanceof Error ? e.message : 'Unknown error'
+    // Called by useMatchSocket when a state_update event arrives
+    const applyStateUpdate = (
+        gameState: Record<string, unknown>,
+        matchState: string,
+    ) => {
+        if (detail.value) {
+            detail.value.game_state = gameState
+            detail.value.match_state = matchState
         }
+    }
+
+    // Kept as HTTP fallback (e.g. reconnect after network loss)
+    const refreshMatch = async () => {
+        if (!matchId.value) return
+        await fetchMatch(matchId.value)
     }
 
     const clear = () => {
@@ -43,5 +47,5 @@ export const useMatchStore = defineStore('match', () => {
         error.value = null
     }
 
-    return { matchId, detail, loading, error, fetchMatch, submitAction, clear }
+    return { matchId, detail, loading, error, fetchMatch, applyStateUpdate, refreshMatch, clear }
 })
