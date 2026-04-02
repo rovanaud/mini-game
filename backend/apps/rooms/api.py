@@ -120,6 +120,7 @@ def api_room_detail(request, room_code):
                 }
                 for p in participants
             ],
+            # TODO: possibly many active matches in a room
             "active_match_id": str(active_match.game_match_id)
             if active_match
             else None,

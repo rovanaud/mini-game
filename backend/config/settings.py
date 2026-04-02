@@ -39,7 +39,6 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "channels",
     "corsheaders",
-    "channels",
     "apps.identities",
     "apps.matches",
     "apps.rooms",
@@ -135,7 +134,7 @@ USE_TZ = True
 STATIC_URL = "static/"
 
 # ---- Logging configuration ---------------------------------------------
-LOG_DIR = BASE_DIR / "logs"
+LOG_DIR = BASE_DIR.parent / "logs"
 LOG_DIR.mkdir(exist_ok=True)
 
 LOGGING = {
@@ -165,15 +164,15 @@ LOGGING = {
         },
     },
     "loggers": {
-        "": {  # root logger
-            "handlers": ["console", "file"],
-            "level": "INFO",
-        },
-        # "django": {
+        # "": {  # root logger
         #     "handlers": ["console", "file"],
         #     "level": "INFO",
-        #     "propagate": False,
         # },
+        "django": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
         "apps": {
             "handlers": ["console", "file"],
             "level": "INFO",
