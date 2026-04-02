@@ -254,6 +254,73 @@
       </div>
     </TransitionGroup>
 
+    <!-- End Game Overlay -->
+    <Transition name="fade">
+      <div v-if="showEndGame && matchOutcome"
+          class="fixed inset-0 z-[80] flex items-end justify-center pb-12 px-6"
+          style="background: rgba(0,0,0,0.5); backdrop-filter: blur(4px)">
+        <div class="w-full max-w-sm rounded-3xl p-7 text-center"
+            style="background-color: #FFFFFF; box-shadow: 0 16px 60px rgba(0,0,0,0.2)">
+
+          <!-- Result icon -->
+          <div class="text-5xl mb-3">
+            {{ matchOutcome.iWon === true ? '🏆' : matchOutcome.iWon === false ? '😔' : '🤝' }}
+          </div>
+
+          <!-- Title -->
+          <p class="text-xl font-black mb-1" style="color: #1C1C1E">
+            {{
+              matchOutcome.iResigned ? 'You resigned' :
+              matchOutcome.opponentResigned ? `${opponent.name} resigned` :
+              matchOutcome.iWon === true ? 'You won!' :
+              matchOutcome.iWon === false ? 'You lost' :
+              'Draw'
+            }}
+          </p>
+
+          <!-- Subtitle -->
+          <p class="text-sm mb-6" style="color: #8E8E93">
+            {{
+              matchOutcome.iResigned ? 'Better luck next time.' :
+              matchOutcome.opponentResigned ? 'Your opponent gave up.' :
+              matchOutcome.iWon === true ? 'Well played!' :
+              matchOutcome.iWon === false ? 'Keep practicing.' :
+              'A fair result.'
+            }}
+          </p>
+
+          <!-- Scores (session wins) -->
+          <div class="flex justify-around mb-6 py-3 rounded-2xl" style="background-color: #F2F2F7">
+            <div class="flex flex-col items-center gap-1">
+              <span class="text-2xl font-black" style="color: #007AFF">{{ sessionScore.mine }}</span>
+              <span class="text-[10px] font-bold uppercase tracking-wide" style="color: #8E8E93">You</span>
+            </div>
+            <div class="flex flex-col items-center justify-center">
+              <span class="text-sm font-bold" style="color: #C7C7CC">vs</span>
+            </div>
+            <div class="flex flex-col items-center gap-1">
+              <span class="text-2xl font-black" :style="`color: ${opponent.color}`">{{ sessionScore.opponent }}</span>
+              <span class="text-[10px] font-bold uppercase tracking-wide" style="color: #8E8E93">{{ opponent.name }}</span>
+            </div>
+          </div>
+
+          <!-- Actions -->
+          <div class="flex gap-3">
+            <button @click="showEndGame = false; $router.back()"
+                    class="flex-1 h-12 rounded-2xl font-semibold text-sm transition active:scale-95"
+                    style="background-color: #F2F2F7; color: #1C1C1E">
+              Leave
+            </button>
+            <button @click="requestRematch"
+                    class="flex-1 h-12 rounded-2xl font-bold text-sm text-white transition active:scale-95"
+                    style="background-color: #007AFF">
+              {{ rematchRequested ? 'Waiting…' : 'Rematch' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
   </div>
 </template>
 
@@ -276,6 +343,33 @@ const gameRegistry: Record<string, Component> = {
 
 const route = useRoute()
 const matchStore = useMatchStore()
+const sessionStore = useSessionStore()
+
+
+// ── End-game state ─────────────────────────────────────────────
+interface MatchOutcome {
+  terminationReason: string
+  iWon: boolean | null     // null = draw or unknown
+  iResigned: boolean
+  opponentResigned: boolean
+}
+
+const matchOutcome = ref<MatchOutcome | null>(null)
+const showEndGame = ref(false)
+const rematchRequested = ref(false)
+const requestRematch = () => {
+  rematchRequested.value = true
+  socket.sendRematchRequest()
+}
+
+// ── Socket ────────────────────────────────────────────────────
+
+const socket = useMatchSocket(route.params.id as string)
+
+socket.on('rematch_request', (e) => {
+  console.log('[MatchScreen] Received rematch request with e : ', e)
+  router.replace(`/match/${e.rematch_match_id}`)
+})
 
 // ── Data from store ───────────────────────────────────────────
 const gameState = computed(() => matchStore.detail?.game_state ?? {})

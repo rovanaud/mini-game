@@ -4,6 +4,7 @@ from django.utils import timezone
 import apps.adminops.types as event_types
 from apps.adminops.events import log_event
 from apps.games.models import GameDefinition
+from apps.matches.errors import InvalidMatchStateError
 from apps.matches.models import (
     ActionActorType,
     GameMatch,
@@ -12,7 +13,11 @@ from apps.matches.models import (
     SeatStatus,
 )
 from apps.matches.runtime import initialize_match
-from apps.matches.selectors import get_game_match_game_id, get_game_match_room_id
+from apps.matches.selectors import (
+    get_game_match_game_id,
+    get_game_match_room_id,
+    get_match_seat_participant_ids,
+)
 from apps.rooms.models import (
     Participant,
     ParticipantRoleAssignment,
@@ -253,3 +258,35 @@ def start_game_match(game_match: GameMatch) -> GameMatch:
     room.save(update_fields=["status", "last_activity_at", "updated_at"])
 
     return initialized
+
+
+def create_rematch(original: GameMatch) -> GameMatch:
+    room = original.room
+    created_by_participant = original.created_by_participant
+    game_id = get_game_match_game_id(original)
+    config = original.config_json or {}
+    players_ids = get_match_seat_participant_ids(original)
+
+    new_match, _ = create_game_match(
+        room=room,
+        created_by_participant=created_by_participant,
+        game_id=game_id,
+        players_ids=players_ids,
+        config=config,
+    )
+
+    initialize_match(new_match)
+    return new_match
+
+
+@transaction.atomic
+def request_rematch(game_match: GameMatch, participant_id: str) -> GameMatch:
+    """
+    Track rematch requests. When all participants have requested, create a new match.
+    Returns the new GameMatch if created, None if still waiting.
+    """
+
+    if game_match.state != GameMatchState.COMPLETED:
+        raise InvalidMatchStateError("Can only rematch a completed match.")
+
+    return create_rematch(game_match)
