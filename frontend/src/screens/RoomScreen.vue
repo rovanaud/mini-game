@@ -183,10 +183,11 @@
           <!-- Action Grid -->
           <div class="grid grid-cols-2 gap-3 pb-8">
             <!-- Launch Game button: wire it up -->
-            <button @click="launchGame" :disabled="!isHost || launching" class="flex flex-col items-center justify-center p-4 rounded-2xl text-white transition active:scale-95"
+            <button @click="openSetup" :disabled="!isHost"
+                    class="flex flex-col items-center justify-center p-4 rounded-2xl text-white transition active:scale-95"
                     style="background-color: #007AFF">
               <Rocket :size="22" class="mb-2" />
-              <span class="text-xs font-bold uppercase tracking-wide">{{ launching ? 'Launching…' : 'Launch Game' }}</span>
+              <span class="text-xs font-bold uppercase tracking-wide">Launch Game</span>
             </button>
             <button class="flex flex-col items-center justify-center p-4 rounded-2xl transition active:scale-95"
                     style="background-color: #EAFAF0; color: #34C759">
@@ -216,6 +217,71 @@
       </div>
     </Transition>
 
+    <!-- Game Setup Modal -->
+    <Transition name="fade">
+      <div v-if="showSetup"
+          class="fixed inset-0 z-[70] flex items-end justify-center"
+          style="background: rgba(0,0,0,0.4); backdrop-filter: blur(4px)"
+          @click.self="showSetup = false">
+
+        <div class="w-full rounded-t-3xl px-6 pt-5 pb-10"
+            style="background-color: #FFFFFF; max-height: 75vh; overflow-y: auto">
+
+          <!-- Handle -->
+          <div class="w-10 h-1 rounded-full mx-auto mb-5" style="background-color: #E5E5EA" />
+
+          <h3 class="text-lg font-black mb-5" style="color: #1C1C1E">New Game</h3>
+
+          <!-- Game picker -->
+          <p class="text-[11px] font-bold uppercase tracking-wider mb-2" style="color: #8E8E93">Game</p>
+          <div class="flex flex-col gap-2 mb-6">
+            <button v-for="g in availableGames" :key="g.game_id"
+                    @click="selectedGameId = g.game_id"
+                    class="flex items-center justify-between px-4 py-3 rounded-2xl transition active:scale-95"
+                    :style="selectedGameId === g.game_id
+                      ? 'background-color: #007AFF; color: white'
+                      : 'background-color: #F2F2F7; color: #1C1C1E'">
+              <span class="font-semibold text-sm">{{ g.display_name }}</span>
+              <CheckCircle v-if="selectedGameId === g.game_id" :size="18" />
+            </button>
+          </div>
+
+          <!-- Player picker -->
+          <p class="text-[11px] font-bold uppercase tracking-wider mb-2" style="color: #8E8E93">
+            Players ({{ selectedPlayerIds.length }} selected)
+          </p>
+          <div class="flex flex-col gap-2 mb-6">
+            <button v-for="(p, i) in participants" :key="p.participant_id"
+                    @click="togglePlayer(p.participant_id)"
+                    class="flex items-center gap-3 px-4 py-3 rounded-2xl transition active:scale-95"
+                    :style="selectedPlayerIds.includes(p.participant_id)
+                      ? 'background-color: #EBF4FF; color: #007AFF'
+                      : 'background-color: #F2F2F7; color: #1C1C1E'">
+              <div class="w-8 h-8 rounded-xl flex items-center justify-center text-white text-xs font-bold"
+                  :style="`background-color: ${participantColor(i)}`">
+                {{ (p.display_name ?? '?')[0].toUpperCase() }}
+              </div>
+              <span class="font-semibold text-sm flex-1 text-left">
+                {{ p.display_name ?? 'Unknown' }}
+                <span v-if="p.is_me" class="text-[10px] font-normal ml-1" style="color: #8E8E93">(you)</span>
+              </span>
+              <CheckCircle v-if="selectedPlayerIds.includes(p.participant_id)" :size="18" />
+            </button>
+          </div>
+
+          <p v-if="errorMsg" class="text-sm font-medium mb-3" style="color: #FF3B30">{{ errorMsg }}</p>
+
+          <!-- Launch -->
+          <button @click="launchGame" :disabled="launching"
+                  class="w-full h-14 rounded-2xl font-black text-white text-base transition active:scale-95"
+                  style="background-color: #007AFF">
+            {{ launching ? 'Launching…' : '🚀 Launch' }}
+          </button>
+        </div>
+      </div>
+    </Transition>
+
+
     <BottomNav />
   </div>
 </template>
@@ -227,7 +293,7 @@ import { useRoute, useRouter } from 'vue-router'
 import {
     ChevronLeft, MoreHorizontal, Plus, PlusCircle,
     Send, Smile, CheckCheck, Rocket, Trophy,
-    UserPlus, Settings, LogOut, Pencil
+    UserPlus, Settings, LogOut, Pencil, CheckCircle
 } from 'lucide-vue-next'
 import { roomApi } from '@/api'
 import { useRoomStore } from '@/stores/room'
@@ -300,25 +366,47 @@ const goToActiveMatch = () => {
     if (activeMatchId.value) router.push(`/match/${activeMatchId.value}`)
 }
 
-// Host launches a game — for now auto-picks connect_four with all participants as players
-const launchGame = async () => {
-    if (!isHost.value || launching.value) return
-    errorMsg.value = ''
-    launching.value = true
-    try {
-        const roomCode = route.params.id as string
-        const gameId = 'connect_four'
-        const playersIds = (roomStore.detail?.participants ?? []).map(p => p.participant_id)
-        const result = await roomApi.startGame(roomCode, gameId, playersIds)
-        console.log('Start game result:', result)
-        // router.push(`/match/${result.match_id}`)
-    } catch (e: unknown) {
-        errorMsg.value = e instanceof Error ? e.message : 'Failed to start game'
-    } finally {
-        launching.value = false
-    }
+// ── Game setup ──────────────────────────────────────────────────
+const showSetup = ref(false)
+const selectedGameId = ref<string>('')
+const selectedPlayerIds = ref<string[]>([])
 
-    console.log('Error message set to:', errorMsg.value)
+const openSetup = () => {
+  // Pre-fill defaults: first available game, all participants
+  selectedGameId.value = availableGames.value[0]?.game_id ?? ''
+  selectedPlayerIds.value = participants.value.map(p => p.participant_id)
+  showSetup.value = true
+}
+
+const togglePlayer = (id: string) => {
+  if (selectedPlayerIds.value.includes(id)) {
+    selectedPlayerIds.value = selectedPlayerIds.value.filter(x => x !== id)
+  } else {
+    selectedPlayerIds.value.push(id)
+  }
+}
+
+const launchGame = async () => {
+  if (!isHost.value || launching.value) return
+  if (!selectedGameId.value) { errorMsg.value = 'Pick a game.'; return }
+  if (selectedPlayerIds.value.length < 2) { errorMsg.value = 'Select at least 2 players.'; return }
+
+  errorMsg.value = ''
+  launching.value = true
+  try {
+    const result = await roomApi.startGame(
+      route.params.id as string,
+      selectedGameId.value,
+      selectedPlayerIds.value,
+    )
+    showSetup.value = false
+    showSheet.value = false
+    router.push(`/match/${result.match_id}`)
+  } catch (e: unknown) {
+    errorMsg.value = e instanceof Error ? e.message : 'Failed to start game'
+  } finally {
+    launching.value = false
+  }
 }
 
 // Polling: re-fetch room every 3s so non-host sees when match starts
