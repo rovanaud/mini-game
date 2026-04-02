@@ -5,7 +5,7 @@
     <header class="px-4 py-3 flex justify-between items-center flex-shrink-0"
             style="background: rgba(255,255,255,0.85); backdrop-filter: blur(20px); border-bottom: 1px solid #E5E5EA">
       <div class="flex items-center gap-3">
-        <button @click="$router.back()"
+        <button @click="goBack"
                 class="w-9 h-9 rounded-full flex items-center justify-center transition active:scale-90"
                 style="background-color: #F2F2F7">
           <ChevronLeft :size="22" style="color: #1C1C1E" />
@@ -22,6 +22,11 @@
               {{ isMyTurn ? 'Your turn' : 'Their turn' }}
             </p>
           </div>
+          <!-- <div class="flex items-center gap-2 text-sm font-bold">
+            <span>{{ sessionScore.mine }}</span>
+            <span style="color: #C7C7CC">–</span>
+            <span>{{ sessionScore.opponent }}</span>
+          </div> -->
         </div>
       </div>
 
@@ -49,9 +54,9 @@
       </div>
 
       <!-- No timer indicator -->
-      <div v-else class="px-3 py-1.5 rounded-full" style="background-color: #F2F2F7">
+      <!-- <div v-else class="px-3 py-1.5 rounded-full" style="background-color: #F2F2F7">
         <span class="text-[10px] font-semibold" style="color: #8E8E93">No timer</span>
-      </div>
+      </div> -->
     </header>
 
     <!-- Game Board Area — generic slot -->
@@ -168,7 +173,7 @@
         <p class="text-xs font-bold uppercase tracking-widest text-center py-2" style="color: #8E8E93">
           Game Chat
         </p>
-        <div class="flex-1 overflow-y-auto px-4 py-2 space-y-3">
+        <div ref="chatScrollEl" class="flex-1 overflow-y-auto px-4 py-2 space-y-3">
           <div v-for="msg in chatMessages" :key="msg.id"
                class="flex" :class="msg.isMine ? 'justify-end' : 'justify-start'">
             <div class="rounded-2xl px-3 py-2 max-w-[75%]"
@@ -326,8 +331,8 @@
 
 <script setup lang="ts">
 
-  import { ref, computed, onMounted, onUnmounted, type Component } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick, type Component } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import {
   ChevronLeft, Timer, MessageSquare,
   Smile, Zap, Flag, Send, Puzzle
@@ -336,12 +341,14 @@ import type { TimerConfig } from '@/types'
 import type { ConnectFourState, ConnectFourConfig } from '@/types'
 import ConnectFourBoard from '@/components/games/ConnectFourBoard.vue'
 import { useMatchStore } from '@/stores/match'
-
+import { useMatchSocket } from '@/composables/useMatchSocket'
+import {useSessionStore} from "@/stores/session";
 const gameRegistry: Record<string, Component> = {
   connect_four: ConnectFourBoard,
 }
 
 const route = useRoute()
+const router = useRouter()
 const matchStore = useMatchStore()
 const sessionStore = useSessionStore()
 
@@ -371,11 +378,69 @@ socket.on('rematch_request', (e) => {
   router.replace(`/match/${e.rematch_match_id}`)
 })
 
+socket.on('state_update', (e) => {
+  matchStore.applyStateUpdate(e.game_state, e.match_state)
+  if (timerConfig.value.mode === 'per_move') seconds.value = 0
+
+  if (e.match_state === 'completed' && e.outcome) {
+    const o = e.outcome
+    const iAmActor = o.actor_participant_id === myParticipantId.value
+    console.log('[MatchScreen] Match completed with outcome:', e)
+    // winner_summary shape: { winner_seat: number } | { draw: true }
+    const ws = o.winner_summary as any
+    const myWon = ws?.winner_seat !== undefined
+      ? ws.winner_seat === myPlayerIndex.value
+      : null
+
+    matchOutcome.value = {
+      terminationReason: o.termination_reason,
+      iWon: myWon,
+      iResigned: o.termination_reason === 'resign' && iAmActor,
+      opponentResigned: o.termination_reason === 'resign' && !iAmActor,
+    }
+    showEndGame.value = true
+    clearInterval(timerInterval)
+  }
+
+})
+
+socket.on('chat_message', (e) => {
+  const isMine = e.message.sender_id === myParticipantId.value
+  chatMessages.value.push({
+    id: e.message.id,
+    isMine,
+    text: e.message.text,
+    displayName: e.message.display_name ?? undefined,
+  })
+  if (!showChat.value && !isMine) {
+    unreadCount.value++
+  }
+  // Auto-scroll chat to bottom
+  nextTick(() => {
+    chatScrollEl.value?.scrollTo({ top: chatScrollEl.value.scrollHeight, behavior: 'smooth' })
+  })
+})
+
+socket.on('reaction', (e) => {
+  const isMine = e.sender_id === myParticipantId.value
+  if (!isMine) {
+    // Trigger float animation for incoming reaction from opponent
+    _spawnFloatingReaction(e.emoji)
+  }
+})
+
+socket.on('error', (e) => {
+  console.error('[MatchScreen] WS error:', e.message)
+})
+
 // ── Data from store ───────────────────────────────────────────
 const gameState = computed(() => matchStore.detail?.game_state ?? {})
 const gameConfig = computed(() => matchStore.detail?.game_config ?? {})
 const gameKey = computed(() => matchStore.detail?.game_key ?? '')
 const myPlayerIndex = computed(() => matchStore.detail?.my_seat_index ?? 0)
+const myParticipantId = computed(() => matchStore.detail?.seats
+  ?.find(s => s.seat_index === myPlayerIndex.value)?.participant_id ?? null
+)
 
 const isMyTurn = computed(() => {
   const state = gameState.value as Partial<ConnectFourState>
@@ -384,7 +449,6 @@ const isMyTurn = computed(() => {
 
 const gameBoardComponent = computed(() => gameRegistry[gameKey.value] ?? null)
 
-// Opponent: the seat that is not mine
 const opponent = computed(() => {
   const seats = matchStore.detail?.seats ?? []
   const opp = seats.find(s => s.seat_index !== myPlayerIndex.value)
@@ -394,9 +458,16 @@ const opponent = computed(() => {
   }
 })
 
+const roomId = matchStore?.detail?.room_id!
+
+
+const goBack = () => {
+  router.push(`/room/${roomId}`)
+}
+
 // ── Actions ───────────────────────────────────────────────────
 const submitAction = (action: { type: string; payload: Record<string, unknown> }) => {
-  matchStore.submitAction(action.type, action.payload)
+  socket.sendAction(action.type, action.payload)
 }
 
 // ── Timer ─────────────────────────────────────────────────────
@@ -425,9 +496,17 @@ const requestTime = () => {
   seconds.value = Math.max(0, seconds.value - (timerConfig.value.time_request_seconds ?? 15))
 }
 
+// Reset timeRequestsLeft once config is loaded
+watch(timerConfig, (cfg) => {
+  timeRequestsLeft.value = cfg.max_time_requests ?? 0
+}, { once: true })
+
 let timerInterval: ReturnType<typeof setInterval>
 onMounted(async () => {
+  // HTTP fetch provides initial data (config, seats) while socket handshake completes.
+  // The socket's own state_update on connect will then overwrite game_state.
   await matchStore.fetchMatch(route.params.id as string)
+
   timerInterval = setInterval(() => {
     if (isMyTurn.value && timerConfig.value.enabled) seconds.value++
   }, 1000)
@@ -435,31 +514,46 @@ onMounted(async () => {
 onUnmounted(() => {
   clearInterval(timerInterval)
   matchStore.clear()
+  // socket auto-disconnects via onUnmounted inside useMatchSocket
 })
 
-// ── Chat ─────────────────────────────────────────────────────
+// ── Chat ──────────────────────────────────────────────────────
+interface ChatMsg {
+  id: string
+  isMine: boolean
+  text: string
+  displayName?: string
+}
+
 const showChat = ref(false)
 const chatInput = ref('')
 const unreadCount = ref(0)
-const chatMessages = ref<{ id: number; isMine: boolean; text: string }[]>([])
+const chatMessages = ref<ChatMsg[]>([])
+const chatScrollEl = ref<HTMLElement | null>(null)
 const sendPulse = ref(false)
+
 const sendChatMessage = () => {
-  if (!chatInput.value.trim()) return
-  chatMessages.value.push({ id: Date.now(), isMine: true, text: chatInput.value.trim() })
+  const text = chatInput.value.trim()
+  if (!text) return
+  socket.sendChat(text)
   chatInput.value = ''
   sendPulse.value = true
   setTimeout(() => { sendPulse.value = false }, 150)
 }
 
+// Clear unread badge when chat is opened
+watch(showChat, (open) => {
+  if (open) unreadCount.value = 0
+})
+
 // ── Reactions ─────────────────────────────────────────────────
 const showReactions = ref(false)
 const reactions = ['👏', '🔥', '😂', '😮', '❤️', '👎']
+
 interface ActiveReaction { id: number; emoji: string; x: number }
 const activeReactions = ref<ActiveReaction[]>([])
-const sendReaction = (emoji: string) => {
-  showReactions.value = false
-  chatMessages.value.push({ id: Date.now(), isMine: true, text: emoji + ' reacted' })
-  unreadCount.value += showChat.value ? 0 : 1
+
+const _spawnFloatingReaction = (emoji: string) => {
   const id = Date.now()
   activeReactions.value.push({ id, emoji, x: 20 + Math.random() * 60 })
   setTimeout(() => {
@@ -467,13 +561,30 @@ const sendReaction = (emoji: string) => {
   }, 1600)
 }
 
+const sendReaction = (emoji: string) => {
+  showReactions.value = false
+  socket.sendReaction(emoji)
+  // Spawn locally immediately — don't wait for the echo from the server
+  _spawnFloatingReaction(emoji)
+}
+
 // ── Resign ────────────────────────────────────────────────────
 const showResignConfirm = ref(false)
 const confirmResign = () => { showResignConfirm.value = true }
 const resign = () => {
   showResignConfirm.value = false
-  matchStore.submitAction('resign', {})
+  socket.sendAction('resign', {})
 }
+
+// ── Session score (persists across rematches in the same room session) ──
+const sessionScore = computed(() => sessionStore.getScore(roomId))
+
+// Called after matchOutcome is set
+watch(matchOutcome, (o) => {
+  if (!o) return
+  if (o.iWon === true) sessionStore.recordWin(roomId)
+  else if (o.iWon === false) sessionStore.recordLoss(roomId)
+})
 
 </script>
 

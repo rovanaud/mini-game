@@ -64,6 +64,35 @@ export const matchApi = {
         }),
 }
 
+// ── Chat ──────────────────────────────────────────────────────
+export const chatApi = {
+    getRoomChat: (roomCode: string) =>
+        request<ChatHistory>(`/chat/rooms/${roomCode}/`),
+
+    postRoomChat: (roomCode: string, text: string) =>
+        request<{ message: ChatMessageDTO }>(`/chat/rooms/${roomCode}/`, {
+            method: 'POST',
+            body: JSON.stringify({ text }),
+        }),
+}
+
+export interface ChatMessageDTO {
+    id: string
+    sender_type: string
+    sender_id: string
+    type: string
+    status: string
+    payload: Record<string, unknown>
+    created_at: string
+    edited_at: string | null
+    deleted_at: string | null
+}
+
+export interface ChatHistory {
+    channel_id: string | null
+    messages: ChatMessageDTO[]
+}
+
 // ── Types ─────────────────────────────────────────────────────
 export interface RoomSummary {
     room_id: string
@@ -82,6 +111,8 @@ export interface RoomDetail {
     room_id: string
     public_code: string
     name: string
+    is_host: boolean
+    available_games: { game_id: string; display_name: string }[]
     participants: RoomParticipant[]
     active_match_id: string | null
     my_participant_id: string | null
