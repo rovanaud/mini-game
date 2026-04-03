@@ -18,7 +18,14 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 # Django ASGI app must be obtained before importing anything that touches models
 django_asgi_app = get_asgi_application()
 
-from apps.matches.routing import websocket_urlpatterns  # noqa: E402
+from apps.matches.routing import (
+    websocket_urlpatterns as match_ws_urlpatterns,  # noqa: E402
+)
+from apps.rooms.routing import (
+    websocket_urlpatterns as room_ws_urlpatterns,  # noqa: E402
+)
+
+websocket_urlpatterns = [*match_ws_urlpatterns, *room_ws_urlpatterns]
 
 application = ProtocolTypeRouter(
     {
