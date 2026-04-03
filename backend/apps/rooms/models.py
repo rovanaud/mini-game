@@ -202,3 +202,80 @@ class ParticipantRoleAssignment(models.Model):
             f"{self.participant_id}"  # type: ignore[attr-defined]
             f" | {self.role_type} @ {self.scope_type}:{self.scope_id}"
         )
+
+
+class ProposalState(models.TextChoices):
+    OPEN = "open", "Open"
+    ACCEPTED = "accepted", "Accepted"
+    REJECTED = "rejected", "Rejected"
+    EXPIRED = "expired", "Expired"
+    CANCELLED = "cancelled", "Cancelled"
+
+
+class VoteMode(models.TextChoices):
+    ALL_OR_NOTHING = "all_or_nothing", "All Or Nothing"
+    MAJORITY = "majority", "Majority"
+
+
+class ProposalResponseChoice(models.TextChoices):
+    PENDING = "pending", "Pending"
+    YES = "yes", "Yes"
+    NO = "no", "No"
+    ABSTAIN = "abstain", "Abstain"
+
+
+class Proposal(models.Model):
+    proposal_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name="proposals")
+    created_by_participant = models.ForeignKey(
+        Participant,
+        on_delete=models.RESTRICT,
+        related_name="created_proposals",
+    )
+    proposal_type = models.CharField(max_length=64)
+    state = models.CharField(
+        max_length=32,
+        choices=ProposalState.choices,
+        default=ProposalState.OPEN,
+    )
+    payload_json = models.JSONField(default=dict)
+    rules_json = models.JSONField(default=dict)
+    result_json = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "proposal"
+
+
+class ProposalResponse(models.Model):
+    proposal_response_id = models.UUIDField(
+        primary_key=True, default=uuid.uuid4, editable=False
+    )
+    proposal = models.ForeignKey(
+        Proposal,
+        on_delete=models.CASCADE,
+        related_name="responses",
+    )
+    participant = models.ForeignKey(
+        Participant,
+        on_delete=models.CASCADE,
+        related_name="proposal_responses",
+    )
+    response = models.CharField(
+        max_length=16,
+        choices=ProposalResponseChoice.choices,
+        default=ProposalResponseChoice.PENDING,
+    )
+    responded_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "proposal_response"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["proposal", "participant"],
+                name="uq_proposal_participant_response",
+            ),
+        ]
