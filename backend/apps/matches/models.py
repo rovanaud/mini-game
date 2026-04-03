@@ -16,6 +16,7 @@ class GameMatchState(models.TextChoices):
     CANCELLED = "cancelled", "Cancelled"
     ABANDONED = "abandoned", "Abandoned"
     ARCHIVED = "archived", "Archived"
+    PENDING_ACCEPTANCE = "pending_acceptance", "Pending Acceptance"
 
 
 class ActionActorType(models.TextChoices):
@@ -61,6 +62,7 @@ class GameMatch(models.Model):
     config_json = models.JSONField(default=dict)
     snapshot_state_json = models.JSONField(null=True, blank=True)
     metadata_json = models.JSONField(default=dict)
+    pending_acceptances = models.JSONField(default=list, blank=True)
 
     class Meta:
         db_table = "game_match"
