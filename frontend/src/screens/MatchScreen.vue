@@ -341,6 +341,7 @@ import type { TimerConfig } from '@/types'
 import type { ConnectFourState, ConnectFourConfig } from '@/types'
 import ConnectFourBoard from '@/components/games/ConnectFourBoard.vue'
 import { useMatchStore } from '@/stores/match'
+import { useActiveMatchStore } from '@/stores/activeMatch'
 import { useMatchSocket } from '@/composables/useMatchSocket'
 import {useSessionStore} from "@/stores/session";
 const gameRegistry: Record<string, Component> = {
@@ -350,6 +351,7 @@ const gameRegistry: Record<string, Component> = {
 const route = useRoute()
 const router = useRouter()
 const matchStore = useMatchStore()
+const activeMatchStore = useActiveMatchStore()
 const sessionStore = useSessionStore()
 
 
@@ -375,11 +377,17 @@ const socket = useMatchSocket(route.params.id as string)
 
 socket.on('rematch_request', (e) => {
   console.log('[MatchScreen] Received rematch request with e : ', e)
+  activeMatchStore.setActiveMatch({
+    matchId: e.rematch_match_id,
+    roomCode: matchStore.detail?.room_code ?? activeMatchStore.roomCode ?? undefined,
+  })
   router.replace(`/match/${e.rematch_match_id}`)
 })
 
 socket.on('state_update', (e) => {
   matchStore.applyStateUpdate(e.game_state, e.match_state)
+  activeMatchStore.updateMatchState(e.match_state)
+  activeMatchStore.clearAttention()
   if (timerConfig.value.mode === 'per_move') seconds.value = 0
 
   if (e.match_state === 'completed' && e.outcome) {
@@ -387,16 +395,30 @@ socket.on('state_update', (e) => {
     const iAmActor = o.actor_participant_id === myParticipantId.value
     console.log('[MatchScreen] Match completed with outcome:', e)
     // winner_summary shape: { winner_seat: number } | { draw: true }
-    const ws = o.winner_summary as any
-    const myWon = ws?.winner_seat !== undefined
+    const ws = o.winner_summary as { winner_seat?: number | null; reason?: string }
+    const myWon = ws?.winner_seat != null
       ? ws.winner_seat === myPlayerIndex.value
       : null
+    const isResignation =
+      o.termination_reason === 'resign' ||
+      ws?.reason === 'resignation' ||
+      (e.game_state as { outcome?: string })?.outcome === 'resign'
+
+    // Fallback when actor_participant_id is unavailable (e.g., initial completed push)
+    const iResigned = isResignation && (
+      (o.actor_participant_id != null && iAmActor) ||
+      (o.actor_participant_id == null && myWon === false)
+    )
+    const opponentResigned = isResignation && (
+      (o.actor_participant_id != null && !iAmActor) ||
+      (o.actor_participant_id == null && myWon === true)
+    )
 
     matchOutcome.value = {
-      terminationReason: o.termination_reason,
+      terminationReason: isResignation ? 'resign' : o.termination_reason,
       iWon: myWon,
-      iResigned: o.termination_reason === 'resign' && iAmActor,
-      opponentResigned: o.termination_reason === 'resign' && !iAmActor,
+      iResigned,
+      opponentResigned,
     }
     showEndGame.value = true
     clearInterval(timerInterval)
@@ -458,11 +480,13 @@ const opponent = computed(() => {
   }
 })
 
-const roomId = matchStore?.detail?.room_id!
 
-
+// ── Navigation ─────────────────────────────────────────────────
+// Wrong, should be /room/room-code
 const goBack = () => {
-  router.push(`/room/${roomId}`)
+  const roomCode = matchStore.detail?.room_code
+  if (roomCode) router.push(`/room/${roomCode}`)
+  else router.back()
 }
 
 // ── Actions ───────────────────────────────────────────────────
@@ -506,6 +530,15 @@ onMounted(async () => {
   // HTTP fetch provides initial data (config, seats) while socket handshake completes.
   // The socket's own state_update on connect will then overwrite game_state.
   await matchStore.fetchMatch(route.params.id as string)
+  if (matchStore.detail) {
+    activeMatchStore.setActiveMatch({
+      matchId: matchStore.detail.match_id,
+      roomCode: matchStore.detail.room_code,
+      matchState: matchStore.detail.match_state,
+    })
+    activeMatchStore.updateMatchState(matchStore.detail.match_state)
+    activeMatchStore.clearAttention()
+  }
 
   timerInterval = setInterval(() => {
     if (isMyTurn.value && timerConfig.value.enabled) seconds.value++
@@ -577,13 +610,23 @@ const resign = () => {
 }
 
 // ── Session score (persists across rematches in the same room session) ──
-const sessionScore = computed(() => sessionStore.getScore(roomId))
+const roomId = computed(() => matchStore.detail?.room_id ?? '')
+const sessionScore = computed(() =>
+  roomId.value ? sessionStore.getScore(roomId.value) : { mine: 0, opponent: 0 },
+)
+const scoredMatchIds = ref(new Set<string>())
 
 // Called after matchOutcome is set
 watch(matchOutcome, (o) => {
-  if (!o) return
-  if (o.iWon === true) sessionStore.recordWin(roomId)
-  else if (o.iWon === false) sessionStore.recordLoss(roomId)
+  const activeRoomId = roomId.value
+  const currentMatchId = matchStore.detail?.match_id
+  if (!o || !activeRoomId || !currentMatchId) return
+  if (scoredMatchIds.value.has(currentMatchId)) return
+
+  if (o.iWon === true) sessionStore.recordWin(activeRoomId)
+  else if (o.iWon === false) sessionStore.recordLoss(activeRoomId)
+
+  scoredMatchIds.value.add(currentMatchId)
 })
 
 </script>

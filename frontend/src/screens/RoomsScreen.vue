@@ -175,10 +175,11 @@
 </template>
 
 <script setup lang="ts">
-  import { ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { Plus, Users, QrCode, ChevronRight, ChevronLeft, Circle } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
-import { roomApi } from '@/api'
+import { roomApi, type RoomSummary } from '@/api'
+import { useRoomsUpdatesSocket, type RoomsEvent } from '@/composables/useRoomSocket'
 import BottomNav from '@/components/BottomNav.vue'
 
 const router = useRouter()
@@ -187,13 +188,36 @@ const showJoinSheet = ref(false)
 const joinCode = ref('')
 const joinLink = ref('')
 const errorMsg = ref('')
+const rooms = ref<RoomSummary[]>([])
+const roomsSocket = useRoomsUpdatesSocket()
 
-// Stubs until API list endpoint is wired to a store
-const activeRoom = ref<null>(null)
+const fetchRooms = async () => {
+    try {
+        const result = await roomApi.list()
+        rooms.value = result.rooms
+    } catch (e: unknown) {
+        errorMsg.value = e instanceof Error ? e.message : 'Failed to load rooms'
+    }
+}
+
+const activeRoom = computed(() => {
+    const room = rooms.value[0]
+    if (!room) return null
+    return {
+        id: room.public_code,
+        name: room.name,
+        onlineCount: 'Unknown',
+    }
+})
 const permanentRooms = ref<{ id: string; name: string; lastActivity: string; color: string }[]>([])
 
+const handleRoomsEvent = async (event: RoomsEvent) => {
+    if (event.event === 'subscribed') return
+    await fetchRooms()
+}
+
 const goToActiveRoom = () => {
-    if (activeRoom.value) router.push(`/room/${(activeRoom.value as any).id}`)
+    if (activeRoom.value) router.push(`/room/${activeRoom.value.id}`)
 }
 
 const goToPermanentRoom = (room: { id: string }) => {
@@ -204,6 +228,7 @@ const createRoom = async () => {
     errorMsg.value = ''
     try {
         const result = await roomApi.create()
+        await fetchRooms()
         router.push(`/room/${result.public_code}`)
     } catch (e: unknown) {
         errorMsg.value = e instanceof Error ? e.message : 'Failed to create room'
@@ -215,6 +240,7 @@ const joinByCode = async () => {
     errorMsg.value = ''
     try {
         const result = await roomApi.join(joinCode.value)
+        await fetchRooms()
         showJoinSheet.value = false
         router.push(`/room/${result.public_code}`)
     } catch (e: unknown) {
@@ -229,6 +255,16 @@ const joinByLink = () => {
         joinByCode()
     }
 }
+
+onMounted(async () => {
+    await fetchRooms()
+    roomsSocket.on(handleRoomsEvent)
+})
+
+onUnmounted(() => {
+    roomsSocket.off(handleRoomsEvent)
+    roomsSocket.disconnect()
+})
 
 </script>
 

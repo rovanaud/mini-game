@@ -21,6 +21,29 @@
     <!-- error display (add near top of sheet content) -->
     <p v-if="errorMsg" class="text-sm text-red-500 font-medium mb-3">{{ errorMsg }}</p>
 
+    <!-- Pending proposal card -->
+    <section v-if="myPendingProposal" class="mx-4 mt-3 rounded-2xl p-4"
+             style="background-color: #FFFFFF; box-shadow: 0 2px 8px rgba(0,0,0,0.08)">
+      <p class="text-[10px] font-bold uppercase tracking-widest mb-2" style="color: #8E8E93">
+        Proposal
+      </p>
+      <p class="text-sm font-semibold mb-3" style="color: #1C1C1E">
+        {{ proposalSummaryText }}
+      </p>
+      <div class="flex gap-2">
+        <button @click="respondProposal('yes')" :disabled="respondingProposal"
+                class="flex-1 h-10 rounded-xl font-semibold text-sm text-white transition active:scale-95"
+                style="background-color: #34C759">
+          Accept
+        </button>
+        <button @click="respondProposal('no')" :disabled="respondingProposal"
+                class="flex-1 h-10 rounded-xl font-semibold text-sm text-white transition active:scale-95"
+                style="background-color: #FF3B30">
+          Decline
+        </button>
+      </div>
+    </section>
+
     <!-- Chat Messages -->
     <main ref="chatContainer"
       class="flex-1 overflow-y-auto px-4 py-4 space-y-4"
@@ -309,17 +332,22 @@
 
 <script setup lang="ts">
 
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
     ChevronLeft, MoreHorizontal, Plus, PlusCircle,
     Send, Smile, CheckCheck, Rocket, Trophy,
-    UserPlus, Settings, LogOut, Pencil, CheckCircle
+    UserPlus, Settings, LogOut, Pencil, CheckCircle, Swords
 } from 'lucide-vue-next'
-import { roomApi } from '@/api'
+import { roomApi, type ProposalResponseChoice, type RoomProposal } from '@/api'
 import { useRoomStore } from '@/stores/room'
 import { useActiveMatchStore } from '@/stores/activeMatch'
 import {
+    useRoomSocket,
+    type RoomEvent,
+    type RoomChatMessageEvent,
+    type RoomChatHistoryEvent,
+} from '@/composables/useRoomSocket'
 import BottomNav from '@/components/BottomNav.vue'
 
 const route = useRoute()
@@ -333,6 +361,7 @@ const showSheet = ref(false)
 const inputText = ref('')
 const errorMsg = ref('')
 const launching = ref(false)
+const respondingProposal = ref(false)
 
 const goBackToRooms = () => router.push('/rooms')
 
@@ -349,7 +378,7 @@ const saveName = async () => {
     const trimmed = nameInput.value.trim()
     if (!trimmed || trimmed === roomStore.detail?.name) return
     try {
-        await roomApi.rename(route.params.id as string, trimmed)
+        await roomApi.rename(route.params.roomCode as string, trimmed)
         // Patch store directly — no need for full re-fetch
         if (roomStore.detail) roomStore.detail.name = trimmed
     } catch (e: unknown) {
@@ -360,6 +389,17 @@ const participants = computed(() => roomStore.detail?.participants ?? [])
 const isHost = computed(() => roomStore.detail?.is_host ?? false)
 const activeMatchId = computed(() => roomStore.detail?.active_match_id ?? null)
 const availableGames = computed(() => roomStore.detail?.available_games ?? [])
+const pendingProposals = computed(() => roomStore.detail?.pending_proposals ?? [])
+const myPendingProposal = computed(
+  () => pendingProposals.value.find((p) => p.can_respond && p.proposal_type === 'match_start') ?? null,
+)
+const proposalSummaryText = computed(() => {
+  const p = myPendingProposal.value
+  if (!p) return ''
+  const payload = p.payload as { game_id?: string }
+  const gameId = payload.game_id ?? 'game'
+  return `You are invited to a ${String(gameId).replace('_', ' ')} match.`
+})
 
 // Participant colours (stable per index)
 const COLORS = ['#007AFF', '#34C759', '#FF9500', '#FF3B30', '#AF52DE', '#5AC8FA']
@@ -372,26 +412,71 @@ const statusLegend = [
 ]
 
 // Chat (local only for now — WebSocket in next step)
-const messages = ref<{ id: number; type: string; isMine: boolean; author: string; avatarColor: string; text: string; time: string }[]>([])
+type RoomUiMessage = {
+    id: string
+    type: 'chat' | 'system'
+    isMine: boolean
+    author: string
+    avatarColor: string
+    text: string
+    time: string
+}
+
+const messages = ref<RoomUiMessage[]>([])
 const chatContainer = ref<HTMLElement | null>(null)
 
-const sendMessage = () => {
-    if (!inputText.value.trim()) return
+const formatTime = (iso: string) =>
+    new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+
+const colorFromName = (name: string) => {
+    let hash = 0
+    for (let i = 0; i < name.length; i++) hash = (hash << 5) - hash + name.charCodeAt(i)
+    const palette = COLORS
+    return palette[Math.abs(hash) % palette.length]
+}
+
+const pushRoomChatMessage = (message: {
+    id: string
+    sender_id: string | null
+    display_name: string | null
+    text: string
+    created_at: string
+}) => {
+    const me = roomStore.detail?.my_participant_id
+    const author = message.display_name ?? 'Unknown'
     messages.value.push({
-        id: Date.now(),
+        id: message.id,
         type: 'chat',
-        isMine: true,
-        author: 'You',
-        avatarColor: '#007AFF',
-        text: inputText.value.trim(),
-        time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+        isMine: !!me && message.sender_id === me,
+        author,
+        avatarColor: colorFromName(author),
+        text: message.text,
+        time: formatTime(message.created_at),
     })
+    nextTick(() => {
+        chatContainer.value?.scrollTo({
+            top: chatContainer.value.scrollHeight,
+            behavior: 'smooth',
+        })
+    })
+}
+
+const sendMessage = () => {
+    const text = inputText.value.trim()
+    if (!text) return
+    roomSocket.sendChat(text)
     inputText.value = ''
 }
 
 // If there's already an active match, go straight to it
 const goToActiveMatch = () => {
-    if (activeMatchId.value) router.push(`/match/${activeMatchId.value}`)
+    if (!activeMatchId.value) return
+    activeMatchStore.setActiveMatch({
+        matchId: activeMatchId.value,
+        roomCode,
+    })
+    activeMatchStore.clearAttention()
+    router.push(`/match/${activeMatchId.value}`)
 }
 
 // ── Game setup ──────────────────────────────────────────────────
@@ -423,18 +508,68 @@ const launchGame = async () => {
   launching.value = true
   try {
     const result = await roomApi.startGame(
-      route.params.id as string,
+      route.params.roomCode as string,
       selectedGameId.value,
       selectedPlayerIds.value,
     )
+    if (result.match_id) {
+      activeMatchStore.setActiveMatch({
+        matchId: result.match_id,
+        roomCode,
+      })
+    }
     showSetup.value = false
     showSheet.value = false
-    router.push(`/match/${result.match_id}`)
+    if (result.match_id) {
+      router.push(`/match/${result.match_id}`)
+    } else {
+      messages.value.push({
+        id: `sys-${Date.now()}`,
+        type: 'system',
+        isMine: false,
+        author: 'System',
+        avatarColor: '#8E8E93',
+        text: 'Match proposal sent. Waiting for approvals.',
+        time: '',
+      })
+    }
   } catch (e: unknown) {
     errorMsg.value = e instanceof Error ? e.message : 'Failed to start game'
   } finally {
     launching.value = false
   }
+}
+
+const respondProposal = async (response: ProposalResponseChoice) => {
+  const proposal = myPendingProposal.value
+  if (!proposal || respondingProposal.value) return
+  respondingProposal.value = true
+  errorMsg.value = ''
+  try {
+    await roomApi.respondProposal(roomCode, proposal.proposal_id, response)
+    await refreshRoom()
+  } catch (e: unknown) {
+    errorMsg.value = e instanceof Error ? e.message : 'Failed to respond to proposal'
+  } finally {
+    respondingProposal.value = false
+  }
+}
+
+// ── Active match chip ─────────────────────────────────────────
+const showActiveMatchChip = computed(
+  () => activeMatchStore.hasActiveMatch && route.name !== 'match',
+)
+
+console.log('showActiveMatchChip', showActiveMatchChip.value, activeMatchStore.hasActiveMatch, route.name)
+
+const showActiveMatchAttention = computed(
+  () => showActiveMatchChip.value && activeMatchStore.hasUnreadAttention,
+)
+
+const resumeMatch = () => {
+  if (!activeMatchStore.matchId) return
+  activeMatchStore.clearAttention()
+  router.push(`/match/${activeMatchStore.matchId}`)
 }
 
 // ── Room life cycle ─────────────────────────────────────────
@@ -449,9 +584,53 @@ const refreshRoom = async () => {
         activeMatchStore.clear()
     }
 }
+
+const handleRoomEvent = async (event: RoomEvent) => {
+  console.log('Received room event', event)
+    if (event.event === 'subscribed') return
+    if (event.event.startsWith('match_')) {
+        activeMatchStore.markAttention()
+    }
+    await refreshRoom()
+}
+
+const handleRoomChatMessage = (event: RoomChatMessageEvent) => {
+    pushRoomChatMessage(event.message)
+}
+
+const handleRoomChatHistory = (event: RoomChatHistoryEvent) => {
+    const me = roomStore.detail?.my_participant_id
+    messages.value = event.messages.map((message) => {
+        const author = message.display_name ?? 'Unknown'
+        return {
+            id: message.id,
+            type: 'chat' as const,
+            isMine: !!me && message.sender_id === me,
+            author,
+            avatarColor: colorFromName(author),
+            text: message.text,
+            time: formatTime(message.created_at),
+        }
+    })
+    nextTick(() => {
+        chatContainer.value?.scrollTo({
+            top: chatContainer.value.scrollHeight,
+            behavior: 'auto',
+        })
+    })
+}
+
+onMounted(async () => {
+    await refreshRoom()
+    roomSocket.on('room_event', handleRoomEvent)
+    roomSocket.on('room_chat_message', handleRoomChatMessage)
+    roomSocket.on('room_chat_history', handleRoomChatHistory)
 })
 onUnmounted(() => {
-    clearInterval(pollInterval)
+    roomSocket.off('room_event', handleRoomEvent)
+    roomSocket.off('room_chat_message', handleRoomChatMessage)
+    roomSocket.off('room_chat_history', handleRoomChatHistory)
+    roomSocket.disconnect()
     roomStore.clear()
 })
 

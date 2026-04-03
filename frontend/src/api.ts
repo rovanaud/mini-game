@@ -41,9 +41,14 @@ export const roomApi = {
         }),
 
     startGame: (roomCode: string, gameId: string, playersIds: string[]) =>
-        request<{ match_id: string; game_key: string }>(`/rooms/${roomCode}/start/`, {
+        request<StartGameResult>(`/rooms/${roomCode}/start/`, {
             method: 'POST',
             body: JSON.stringify({ game_id: gameId, players_ids: playersIds }),
+        }),
+    respondProposal: (roomCode: string, proposalId: string, response: ProposalResponseChoice) =>
+        request<{ proposal: RoomProposal }>(`/rooms/${roomCode}/proposals/${proposalId}/respond/`, {
+            method: 'POST',
+            body: JSON.stringify({ response }),
         }),
     rename: (roomCode: string, name: string) =>
         request<{ name: string }>(`/rooms/${roomCode}/rename/`, {
@@ -116,6 +121,32 @@ export interface RoomDetail {
     participants: RoomParticipant[]
     active_match_id: string | null
     my_participant_id: string | null
+    pending_proposals: RoomProposal[]
+}
+
+export interface ProposalVote {
+    participant_id: string
+    display_name: string | null
+    response: ProposalResponseChoice
+    responded_at: string | null
+}
+
+export type ProposalResponseChoice = 'pending' | 'yes' | 'no' | 'abstain'
+
+export interface RoomProposal {
+    proposal_id: string
+    proposal_type: string
+    state: string
+    payload: Record<string, unknown>
+    rules: Record<string, unknown>
+    result: Record<string, unknown>
+    created_by_participant_id: string
+    created_at: string
+    resolved_at: string | null
+    expires_at: string | null
+    responses: ProposalVote[]
+    my_response: ProposalResponseChoice | null
+    can_respond: boolean
 }
 
 export interface RoomCreated {
@@ -132,6 +163,12 @@ export interface RoomJoined {
     participant_id: string
 }
 
+export interface StartGameResult {
+    proposal_id: string
+    state: string
+    match_id: string | null
+}
+
 export interface MatchSeat {
     seat_index: number
     participant_id: string | null
@@ -142,6 +179,7 @@ export interface MatchSeat {
 export interface MatchDetail {
     match_id: string
     room_id: string
+    room_code: string
     game_key: string
     game_config: Record<string, unknown>
     game_state: Record<string, unknown>
