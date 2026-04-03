@@ -14,7 +14,7 @@ const routes = [
     { path: '/rooms', name: 'rooms', component: RoomsScreen },
     { path: '/stats', name: 'stats', component: StatsScreen },
     { path: '/profile', name: 'profile', component: ProfileScreen },
-    { path: '/room/:id', name: 'room', component: RoomScreen },
+    { path: '/room/:roomCode', name: 'room', component: RoomScreen },
     { path: '/match/:id', name: 'match', component: MatchScreen },
 ]
 
