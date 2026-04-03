@@ -5,7 +5,7 @@
     <header class="sticky top-0 z-50 px-4 py-3 flex justify-between items-center"
             style="background: rgba(255,255,255,0.85); backdrop-filter: blur(20px); border-bottom: 1px solid #E5E5EA">
       <div class="flex items-center gap-3">
-        <button @click="$router.back()" class="p-1 transition active:scale-90">
+        <button @click="goBackToRooms" class="p-1 transition active:scale-90">
           <ChevronLeft :size="24" style="color: #007AFF" />
         </button>
         <button @click="showSheet = true" class="flex flex-col text-left transition active:opacity-60">
@@ -307,6 +307,8 @@ const showSheet = ref(false)
 const inputText = ref('')
 const errorMsg = ref('')
 const launching = ref(false)
+
+const goBackToRooms = () => router.push('/rooms')
 
 // Derive display values from store
 const roomName = computed(() => roomStore.detail?.name ?? '…')
