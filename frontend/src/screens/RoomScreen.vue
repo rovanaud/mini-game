@@ -73,6 +73,21 @@
       </template>
     </main>
 
+    <!-- Active match resume -->
+    <button
+      v-if="showActiveMatchChip"
+      @click="resumeMatch"
+      class="fixed z-[55] px-4 py-2 h-12 rounded-2xl flex items-center gap-2 shadow-lg transition active:scale-90"
+      style="bottom: 136px; right: 72px; background-color: #007AFF; color: #FFFFFF"
+    >
+      <span
+        v-if="showActiveMatchAttention"
+        class="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full border-2"
+        style="background-color: #FF3B30; border-color: #FFFFFF"
+      />
+      <Swords :size="14" />
+      <span class="text-[11px] font-bold uppercase tracking-wider">Resume Match</span>
+    </button>
     <!-- FAB -->
     <button @click="showSheet = true"
             class="fixed z-40 w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg transition active:scale-90"
@@ -182,6 +197,12 @@
 
           <!-- Action Grid -->
           <div class="grid grid-cols-2 gap-3 pb-8">
+            <button v-if="activeMatchId" @click="goToActiveMatch"
+                    class="col-span-2 flex items-center justify-center gap-2 p-4 rounded-2xl text-white transition active:scale-95"
+                    style="background-color: #34C759">
+              <Rocket :size="20" />
+              <span class="text-xs font-bold uppercase tracking-wide">Resume Active Match</span>
+            </button>
             <!-- Launch Game button: wire it up -->
             <button @click="openSetup" :disabled="!isHost"
                     class="flex flex-col items-center justify-center p-4 rounded-2xl text-white transition active:scale-95"
@@ -297,11 +318,16 @@ import {
 } from 'lucide-vue-next'
 import { roomApi } from '@/api'
 import { useRoomStore } from '@/stores/room'
+import { useActiveMatchStore } from '@/stores/activeMatch'
+import {
 import BottomNav from '@/components/BottomNav.vue'
 
 const route = useRoute()
 const router = useRouter()
 const roomStore = useRoomStore()
+const activeMatchStore = useActiveMatchStore()
+const roomCode = route.params.roomCode as string
+const roomSocket = useRoomSocket(roomCode)
 
 const showSheet = ref(false)
 const inputText = ref('')
@@ -411,23 +437,18 @@ const launchGame = async () => {
   }
 }
 
-// Polling: re-fetch room every 3s so non-host sees when match starts
-let pollInterval: ReturnType<typeof setInterval>
-onMounted(async () => {
-    const roomCode = route.params.id as string
+// ── Room life cycle ─────────────────────────────────────────
+const refreshRoom = async () => {
     await roomStore.fetchRoom(roomCode)
-    // If match already active on load, go there
-    if (activeMatchId.value) {
-        router.push(`/match/${activeMatchId.value}`)
-        return
+    if (roomStore.detail?.active_match_id) {
+        activeMatchStore.setActiveMatch({
+            matchId: roomStore.detail.active_match_id,
+            roomCode,
+        })
+    } else if (activeMatchStore.roomCode === roomCode) {
+        activeMatchStore.clear()
     }
-    pollInterval = setInterval(async () => {
-        await roomStore.fetchRoom(roomCode)
-        if (activeMatchId.value) {
-            clearInterval(pollInterval)
-            router.push(`/match/${activeMatchId.value}`)
-        }
-    }, 3000)
+}
 })
 onUnmounted(() => {
     clearInterval(pollInterval)
