@@ -160,7 +160,7 @@ class ConnectFourModule(GameBaseModule):
             resigned_seat = state["resigned_seat"]
             winner_seat = 1 - resigned_seat
             return GameOutcome(
-                outcome_type="win",
+                outcome_type="resign",
                 winner_summary={
                     "winner_seat": winner_seat,
                     "loser_seat": resigned_seat,
