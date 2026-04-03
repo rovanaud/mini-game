@@ -10,6 +10,7 @@ from apps.matches.models import GameMatch
 from apps.matches.runtime import submit_action
 from apps.matches.selectors import get_match_seats_with_participant_identity
 from apps.rooms.models import Participant
+from apps.rooms.realtime import room_group_name
 
 logger = logging.getLogger(__name__)
 
@@ -163,6 +164,33 @@ class MatchConsumer(AsyncJsonWebsocketConsumer):
                 }
 
             await self.channel_layer.group_send(self.group_name, event)
+            await self.channel_layer.group_send(
+                room_group_name(match.room.public_code),
+                {
+                    "type": "room_event",
+                    "event": "match_state_updated",
+                    "room_code": match.room.public_code,
+                    "payload": {
+                        "match_id": str(match.game_match_id),
+                        "match_state": updated.state,
+                        "action_type": action_type,
+                    },
+                },
+            )
+            if updated.state == "completed":
+                await self.channel_layer.group_send(
+                    room_group_name(match.room.public_code),
+                    {
+                        "type": "room_event",
+                        "event": "match_completed",
+                        "room_code": match.room.public_code,
+                        "payload": {
+                            "match_id": str(match.game_match_id),
+                            "termination_reason": updated.termination_reason,
+                            "winner_summary": updated.winner_summary_json or {},
+                        },
+                    },
+                )
         except Exception as exc:
             await self.send_json({"type": "error", "message": str(exc)})
             return
@@ -240,6 +268,18 @@ class MatchConsumer(AsyncJsonWebsocketConsumer):
             {
                 "type": "broadcast_rematch",
                 "rematch_match_id": str(new_match.game_match_id),
+            },
+        )
+        await self.channel_layer.group_send(
+            room_group_name(match.room.public_code),
+            {
+                "type": "room_event",
+                "event": "match_rematch_started",
+                "room_code": match.room.public_code,
+                "payload": {
+                    "previous_match_id": str(match.game_match_id),
+                    "match_id": str(new_match.game_match_id),
+                },
             },
         )
 
