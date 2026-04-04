@@ -221,6 +221,8 @@ backend/manage.py
 # IDE
 .vscode/
 .idea/
+
+# Personal files
 notes.md
-uv.lock
 TODO.md
+docs/misc/
