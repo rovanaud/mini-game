@@ -16,4 +16,3 @@ frontend/dist
 logs
 .env
 lab-instance-key-pair.pem
-.codex
