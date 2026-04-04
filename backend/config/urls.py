@@ -26,4 +26,5 @@ urlpatterns = [
     # REST API — consumed by Vue frontend via Vite proxy
     path("api/rooms/", include("apps.rooms.api_urls")),
     path("api/matches/", include("apps.matches.api_urls")),
+    path("api/chat/", include("apps.chat.urls")),
 ]

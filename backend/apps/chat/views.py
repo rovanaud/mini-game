@@ -1,7 +1,7 @@
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_GET, require_POST
+from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from apps.chat.models import MessageType
 from apps.chat.selectors import can_read_channel, get_channel_messages, get_room_channel
@@ -94,3 +94,10 @@ def post_room_chat(request, room_code):
             }
         }
     )
+
+
+@require_http_methods(["GET", "POST"])
+def room_chat(request, room_code):
+    if request.method == "GET":
+        return get_room_chat(request, room_code)
+    return post_room_chat(request, room_code)
