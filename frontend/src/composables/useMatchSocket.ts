@@ -1,5 +1,13 @@
 import { onUnmounted, ref } from 'vue'
 
+function defaultWsBase(): string {
+    if (typeof window === 'undefined') {
+        return 'ws://localhost:8000'
+    }
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    return `${wsProtocol}//${window.location.host}`
+}
+
 // ── Types ──────────────────────────────────────────────────────────────────
 
 export interface WsOutcome {
@@ -53,7 +61,7 @@ export type WsEvent = WsStateUpdate | WsChatMessage | WsReaction | WsError | WsR
 
 // ── Composable ─────────────────────────────────────────────────────────────
 
-const WS_BASE = import.meta.env.VITE_WS_URL ?? 'ws://localhost:8000'
+const WS_BASE = import.meta.env.VITE_WS_URL ?? defaultWsBase()
 const MAX_RETRIES = 5
 const BACKOFF_BASE_MS = 1000
 

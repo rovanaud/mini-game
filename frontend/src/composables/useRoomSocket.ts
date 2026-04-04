@@ -1,6 +1,14 @@
 import { onUnmounted, ref } from 'vue'
 
-const WS_BASE = import.meta.env.VITE_WS_URL ?? 'ws://localhost:8000'
+function defaultWsBase(): string {
+    if (typeof window === 'undefined') {
+        return 'ws://localhost:8000'
+    }
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    return `${wsProtocol}//${window.location.host}`
+}
+
+const WS_BASE = import.meta.env.VITE_WS_URL ?? defaultWsBase()
 const MAX_RETRIES = 5
 const BACKOFF_BASE_MS = 1000
 
