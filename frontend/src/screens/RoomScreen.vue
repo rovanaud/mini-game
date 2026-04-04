@@ -339,7 +339,7 @@ import {
     Send, Smile, CheckCheck, Rocket, Trophy,
     UserPlus, Settings, LogOut, Pencil, CheckCircle, Swords
 } from 'lucide-vue-next'
-import { roomApi, type ProposalResponseChoice, type RoomProposal } from '@/api'
+import { roomApi, type ProposalResponseChoice } from '@/api'
 import { useRoomStore } from '@/stores/room'
 import { useActiveMatchStore } from '@/stores/activeMatch'
 import {
