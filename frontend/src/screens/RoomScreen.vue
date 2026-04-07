@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen flex flex-col" style="background-color: #F2F2F7">
+  <div class="min-h-[100dvh] flex flex-col" style="background-color: #F2F2F7">
 
     <!-- Top Bar -->
     <header class="sticky top-0 z-50 px-4 py-3 flex justify-between items-center"
@@ -238,7 +238,8 @@
               <Trophy :size="22" class="mb-2" />
               <span class="text-xs font-bold uppercase tracking-wide text-center">Tournament</span>
             </button>
-            <button class="flex flex-col items-center justify-center p-4 rounded-2xl transition active:scale-95"
+            <button @click="copyInviteLink"
+                    class="flex flex-col items-center justify-center p-4 rounded-2xl transition active:scale-95"
                     style="background-color: #F2F2F7; color: #1C1C1E">
               <UserPlus :size="22" class="mb-2" />
               <span class="text-xs font-bold uppercase tracking-wide">Invite</span>
@@ -248,7 +249,8 @@
               <Settings :size="22" class="mb-2" />
               <span class="text-xs font-bold uppercase tracking-wide">Settings</span>
             </button>
-            <button class="col-span-2 flex items-center justify-center gap-2 p-4 rounded-2xl transition active:scale-95 mt-1"
+            <button @click="leaveCurrentRoom"
+                    class="col-span-2 flex items-center justify-center gap-2 p-4 rounded-2xl transition active:scale-95 mt-1"
                     style="background-color: #FFF0F0; color: #FF3B30">
               <LogOut :size="20" />
               <span class="text-xs font-bold uppercase tracking-wide">Leave Room</span>
@@ -342,6 +344,7 @@ import {
 import { roomApi, type ProposalResponseChoice } from '@/api'
 import { useRoomStore } from '@/stores/room'
 import { useActiveMatchStore } from '@/stores/activeMatch'
+import { useToastStore } from '@/stores/toast'
 import {
     useRoomSocket,
     type RoomEvent,
@@ -354,6 +357,7 @@ const route = useRoute()
 const router = useRouter()
 const roomStore = useRoomStore()
 const activeMatchStore = useActiveMatchStore()
+const toastStore = useToastStore()
 const roomCode = route.params.roomCode as string
 const roomSocket = useRoomSocket(roomCode)
 
@@ -466,6 +470,37 @@ const sendMessage = () => {
     if (!text) return
     roomSocket.sendChat(text)
     inputText.value = ''
+}
+
+const copyInviteLink = async () => {
+    const inviteUrl = `${window.location.origin}/room/${roomCode}`
+    try {
+        await navigator.clipboard.writeText(inviteUrl)
+        toastStore.push({
+            title: 'Invite copied',
+            body: inviteUrl,
+            variant: 'success',
+        })
+    } catch {
+        errorMsg.value = 'Unable to copy invite link.'
+    }
+}
+
+const leaveCurrentRoom = async () => {
+    errorMsg.value = ''
+    try {
+        await roomApi.leave(roomCode)
+        if (activeMatchStore.roomCode === roomCode) {
+            activeMatchStore.clear()
+        }
+        toastStore.push({
+            title: 'Left room',
+            body: 'You can rejoin anytime with the room code.',
+        })
+        router.push('/rooms')
+    } catch (e: unknown) {
+        errorMsg.value = e instanceof Error ? e.message : 'Failed to leave room'
+    }
 }
 
 // If there's already an active match, go straight to it
@@ -588,6 +623,19 @@ const refreshRoom = async () => {
 const handleRoomEvent = async (event: RoomEvent) => {
   console.log('Received room event', event)
     if (event.event === 'subscribed') return
+    if (event.event === 'match_started') {
+        const matchId = String((event.payload as { match_id?: string }).match_id ?? '')
+        if (matchId) {
+            activeMatchStore.setActiveMatch({ matchId, roomCode })
+            toastStore.push({
+                title: 'Match ready',
+                body: 'All players accepted. Opening match…',
+                variant: 'success',
+            })
+            router.push(`/match/${matchId}`)
+            return
+        }
+    }
     if (event.event.startsWith('match_')) {
         activeMatchStore.markAttention()
     }
@@ -596,6 +644,12 @@ const handleRoomEvent = async (event: RoomEvent) => {
 
 const handleRoomChatMessage = (event: RoomChatMessageEvent) => {
     pushRoomChatMessage(event.message)
+    const me = roomStore.detail?.my_participant_id
+    if (!me || event.message.sender_id === me) return
+    toastStore.push({
+        title: event.message.display_name ?? 'New message',
+        body: event.message.text,
+    })
 }
 
 const handleRoomChatHistory = (event: RoomChatHistoryEvent) => {

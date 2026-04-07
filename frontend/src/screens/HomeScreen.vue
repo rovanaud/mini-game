@@ -11,7 +11,8 @@
         </div>
         <div>
           <p class="text-xs font-semibold uppercase tracking-widest" style="color: #8E8E93">Welcome back</p>
-          <p class="text-base font-bold leading-tight" style="color: #1C1C1E">{{ userStore.displayName }}</p>
+          <p class="text-base font-bold leading-tight" style="color: #1C1C1E">{{ userStore.displayName || 'Player' }}</p>
+          <p v-if="userStore.isGuest" class="text-[11px] font-semibold" style="color: #8E8E93">Guest profile</p>
         </div>
       </div>
       <button @click="$router.push('/profile')"
