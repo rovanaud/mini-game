@@ -230,27 +230,53 @@ def get_room_for_join(
 
 @transaction.atomic
 def leave_room(participant: Participant) -> Participant:
-    # TODO: We should also consider the case where the leaving participant is the host.
-    # In that case, we might want to automatically assign a new host from the remaining
-    # participants, or if there are no other participants, we could close the room. For
-    # now, we'll just leave the host_participant field as is, but this is something we
-    # should address in the future to ensure a good user experience.
-    # TODO: Additionally, we might want to differentiate the circumstances of leaving,
-    # such as voluntary leave vs. being kicked out vs. being disconnected due to
-    # network issues. This could affect how we update the participant's status and how
-    # we handle room state changes. For now, we'll just mark the participant as left
-    # and disconnected expired, but in the future, we could have more nuanced handling
-    # based on the reason for leaving.
     now = timezone.now()
 
     participant.status = ParticipantStatus.LEFT
+    participant.is_host = False
     participant.connection_status = ConnectionStatus.DISCONNECTED_EXPIRED
     participant.left_at = now
-    participant.save(update_fields=["status", "connection_status", "left_at"])
+    participant.save(
+        update_fields=["status", "is_host", "connection_status", "left_at"]
+    )
 
     room = participant.room
+    active_participants = list(
+        Participant.objects.filter(
+            room=room,
+            status__in=[
+                ParticipantStatus.JOINING,
+                ParticipantStatus.IDLE,
+                ParticipantStatus.SPECTATING,
+                ParticipantStatus.WAITING,
+                ParticipantStatus.PLAYING,
+            ],
+        ).order_by("joined_at")
+    )
+    if active_participants:
+        new_host = active_participants[0]
+        if room.host_participant_id != new_host.participant_id:
+            Participant.objects.filter(participant_id=new_host.participant_id).update(
+                is_host=True
+            )
+            room.host_participant = new_host
+    else:
+        room.host_participant = None
+        room.status = RoomStatus.IDLE
+
     room.last_activity_at = now
-    room.save(update_fields=["last_activity_at", "updated_at"])
+    room.save(
+        update_fields=["host_participant", "status", "last_activity_at", "updated_at"]
+    )
+
+    if active_participants:
+        ParticipantRoleAssignment.objects.get_or_create(
+            participant=active_participants[0],
+            role_type=RoleType.HOST,
+            scope_type=RoleScopeType.ROOM,
+            scope_id=room.room_id,
+            defaults={"granted_by_participant": None},
+        )
 
     log_event(
         event_types.ROOM_LEFT,

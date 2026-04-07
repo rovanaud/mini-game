@@ -16,6 +16,7 @@ from apps.identities.services import create_guest_identity_and_session
 from apps.matches.models import GameMatch
 from apps.rooms.models import (
     Participant,
+    ParticipantStatus,
     Proposal,
     ProposalResponse,
     ProposalResponseChoice,
@@ -28,6 +29,7 @@ from apps.rooms.services import (
     create_proposal,
     create_room,
     join_room,
+    leave_room,
     respond_to_proposal,
     serialize_proposal,
 )
@@ -109,9 +111,17 @@ def api_room_list(request):
     if request.identity is None:
         return JsonResponse({"rooms": []})
 
+    active_statuses = [
+        ParticipantStatus.JOINING,
+        ParticipantStatus.IDLE,
+        ParticipantStatus.SPECTATING,
+        ParticipantStatus.WAITING,
+        ParticipantStatus.PLAYING,
+    ]
     participants = (
         Participant.objects.filter(identity=request.identity)
         .select_related("room")
+        .filter(status__in=active_statuses)
         .order_by("-room__created_at")
     )
 
@@ -123,6 +133,9 @@ def api_room_list(request):
                     "public_code": p.room.public_code,
                     "name": p.room.name,
                     "created_at": p.room.created_at.isoformat(),
+                    "participant_count": Participant.objects.filter(
+                        room=p.room, status__in=active_statuses
+                    ).count(),
                 }
                 for p in participants
             ]
@@ -296,6 +309,51 @@ def api_join_room(request):
             secure=False,
         )
     return response
+
+
+@csrf_exempt
+@require_POST
+def api_leave_room(request, room_code):
+    """
+    POST /api/rooms/<room_code>/leave/
+    Marks current participant as left.
+    Auto-deletes ephemeral rooms when no active participants remain.
+    """
+    room = get_object_or_404(Room, public_code=room_code)
+    if request.identity is None:
+        return JsonResponse({"error": "Identity required."}, status=401)
+
+    participant = Participant.objects.filter(
+        room=room, identity=request.identity
+    ).first()
+    if participant is None:
+        return JsonResponse({"error": "Not a participant in this room."}, status=403)
+
+    leave_room(participant)
+    _post_room_system_message(room, f"{_display_name(participant)} left the room.")
+    broadcast_room_event(
+        room,
+        event="participant_left",
+        payload={"participant_id": str(participant.participant_id)},
+    )
+
+    active_count = Participant.objects.filter(
+        room=room,
+        status__in=[
+            ParticipantStatus.JOINING,
+            ParticipantStatus.IDLE,
+            ParticipantStatus.SPECTATING,
+            ParticipantStatus.WAITING,
+            ParticipantStatus.PLAYING,
+        ],
+    ).count()
+
+    deleted = False
+    if active_count == 0 and not room.is_permanent:
+        room.delete()
+        deleted = True
+
+    return JsonResponse({"ok": True, "deleted": deleted})
 
 
 @csrf_exempt

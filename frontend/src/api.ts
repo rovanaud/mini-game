@@ -39,6 +39,10 @@ export const roomApi = {
             method: 'POST',
             body: JSON.stringify({ room_code: roomCode, display_name: displayName }),
         }),
+    leave: (roomCode: string) =>
+        request<{ ok: boolean; deleted: boolean }>(`/rooms/${roomCode}/leave/`, {
+            method: 'POST',
+        }),
 
     startGame: (roomCode: string, gameId: string, playersIds: string[]) =>
         request<StartGameResult>(`/rooms/${roomCode}/start/`, {
@@ -54,6 +58,25 @@ export const roomApi = {
         request<{ name: string }>(`/rooms/${roomCode}/rename/`, {
             method: 'POST',
             body: JSON.stringify({ name }),
+        }),
+}
+
+// ── Identities ───────────────────────────────────────────────
+export const identityApi = {
+    me: () => request<{ identity: IdentityProfile | null }>('/identities/me/'),
+    createGuest: (displayName?: string) =>
+        request<{ identity: IdentityProfile }>('/identities/guest/', {
+            method: 'POST',
+            body: JSON.stringify({ display_name: displayName }),
+        }),
+    updateMe: (displayName: string) =>
+        request<{ identity: IdentityProfile }>('/identities/me/', {
+            method: 'PATCH',
+            body: JSON.stringify({ display_name: displayName }),
+        }),
+    deleteMe: () =>
+        request<{ deleted: boolean }>('/identities/me/', {
+            method: 'DELETE',
         }),
 }
 
@@ -104,12 +127,14 @@ export interface RoomSummary {
     public_code: string
     name: string
     created_at: string
+    participant_count?: number
 }
 
 export interface RoomParticipant {
     participant_id: string
     display_name: string | null
     is_me: boolean
+    is_host?: boolean
 }
 
 export interface RoomDetail {
@@ -191,4 +216,13 @@ export interface MatchDetail {
 export interface ActionResult {
     match_state: string
     game_state: Record<string, unknown>
+}
+
+export interface IdentityProfile {
+    identity_id: string
+    display_name: string
+    identity_type: 'guest' | 'registered'
+    status: string
+    avatar_url: string | null
+    created_at: string
 }

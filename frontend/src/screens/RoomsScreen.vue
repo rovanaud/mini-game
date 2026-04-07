@@ -12,11 +12,7 @@
         </button>
         <h1 class="text-lg font-bold leading-tight" style="color: #1C1C1E">Rooms</h1>
       </div>
-      <button @click="showQuickActions = true"
-              class="w-10 h-10 rounded-full flex items-center justify-center transition active:scale-90"
-              style="background-color: #F2F2F7">
-        <Plus :size="20" style="color: #1C1C1E" />
-      </button>
+      <div class="w-10 h-10" />
     </header>
 
     <p v-if="errorMsg" class="mx-4 mt-2 text-sm text-red-500 font-medium">{{ errorMsg }}</p>
@@ -77,6 +73,18 @@
             <ChevronRight :size="18" style="color: #C7C7CC" />
           </div>
         </button>
+        <div class="mt-2 grid grid-cols-2 gap-2">
+          <button @click="copyInvite(activeRoom.id)"
+                  class="h-10 rounded-xl text-xs font-bold uppercase tracking-wide transition active:scale-[0.98]"
+                  style="background-color: #EAF3FF; color: #007AFF">
+            Invite
+          </button>
+          <button @click="leaveRoom(activeRoom.id)"
+                  class="h-10 rounded-xl text-xs font-bold uppercase tracking-wide transition active:scale-[0.98]"
+                  style="background-color: #FFF0F0; color: #FF3B30">
+            Leave
+          </button>
+        </div>
       </section>
 
       <!-- Permanent Rooms -->
@@ -180,16 +188,19 @@ import { Plus, Users, QrCode, ChevronRight, ChevronLeft, Circle } from 'lucide-v
 import { useRouter } from 'vue-router'
 import { roomApi, type RoomSummary } from '@/api'
 import { useRoomsUpdatesSocket, type RoomsEvent } from '@/composables/useRoomSocket'
+import { useToastStore } from '@/stores/toast'
+import { useUserStore } from '@/stores/user'
 import BottomNav from '@/components/BottomNav.vue'
 
 const router = useRouter()
-const showQuickActions = ref(false)
 const showJoinSheet = ref(false)
 const joinCode = ref('')
 const joinLink = ref('')
 const errorMsg = ref('')
 const rooms = ref<RoomSummary[]>([])
 const roomsSocket = useRoomsUpdatesSocket()
+const toastStore = useToastStore()
+const userStore = useUserStore()
 
 const fetchRooms = async () => {
     try {
@@ -206,7 +217,7 @@ const activeRoom = computed(() => {
     return {
         id: room.public_code,
         name: room.name,
-        onlineCount: 'Unknown',
+        onlineCount: room.participant_count ?? 1,
     }
 })
 const permanentRooms = ref<{ id: string; name: string; lastActivity: string; color: string }[]>([])
@@ -227,7 +238,7 @@ const goToPermanentRoom = (room: { id: string }) => {
 const createRoom = async () => {
     errorMsg.value = ''
     try {
-        const result = await roomApi.create()
+        const result = await roomApi.create(userStore.displayName || undefined)
         await fetchRooms()
         router.push(`/room/${result.public_code}`)
     } catch (e: unknown) {
@@ -239,7 +250,7 @@ const joinByCode = async () => {
     if (joinCode.value.length < 4) return
     errorMsg.value = ''
     try {
-        const result = await roomApi.join(joinCode.value)
+        const result = await roomApi.join(joinCode.value, userStore.displayName || undefined)
         await fetchRooms()
         showJoinSheet.value = false
         router.push(`/room/${result.public_code}`)
@@ -253,6 +264,27 @@ const joinByLink = () => {
     if (match) {
         joinCode.value = match[1].toUpperCase()
         joinByCode()
+    }
+}
+
+const copyInvite = async (roomCode: string) => {
+    const inviteUrl = `${window.location.origin}/room/${roomCode}`
+    try {
+        await navigator.clipboard.writeText(inviteUrl)
+        toastStore.push({ title: 'Invite copied', body: inviteUrl, variant: 'success' })
+    } catch {
+        errorMsg.value = 'Unable to copy invite link.'
+    }
+}
+
+const leaveRoom = async (roomCode: string) => {
+    errorMsg.value = ''
+    try {
+        await roomApi.leave(roomCode)
+        await fetchRooms()
+        toastStore.push({ title: 'Room left', body: `You left ${roomCode}.` })
+    } catch (e: unknown) {
+        errorMsg.value = e instanceof Error ? e.message : 'Failed to leave room'
     }
 }
 

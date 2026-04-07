@@ -13,9 +13,20 @@ from apps.rooms.models import (
     RoomTable,
 )
 
+ACTIVE_PARTICIPANT_STATUSES = [
+    ParticipantStatus.JOINING,
+    ParticipantStatus.IDLE,
+    ParticipantStatus.SPECTATING,
+    ParticipantStatus.WAITING,
+    ParticipantStatus.PLAYING,
+]
+
 
 def get_room_participants(room: Room):
-    return Participant.objects.filter(room=room).order_by("joined_at")
+    return Participant.objects.filter(
+        room=room,
+        status__in=ACTIVE_PARTICIPANT_STATUSES,
+    ).order_by("joined_at")
 
 
 def get_room_participants_count(room: Room):
@@ -96,9 +107,5 @@ def get_permanent_rooms_for_identity(identity: UserIdentity) -> models.query.Que
     return Room.objects.filter(
         is_permanent=True,
         participants__identity=identity,
-        participants__status__in=[
-            ParticipantStatus.IDLE,
-            ParticipantStatus.WAITING,
-            ParticipantStatus.PLAYING,
-        ],
+        participants__status__in=ACTIVE_PARTICIPANT_STATUSES,
     ).order_by("-last_activity_at")
