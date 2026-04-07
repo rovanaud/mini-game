@@ -87,8 +87,8 @@ DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": os.getenv("POSTGRES_DB", "mini_game"),
-        "USER": os.getenv("POSTGRES_USER", "ivant"),
-        "PASSWORD": os.getenv("POSTGRES_PASSWORD", "ivant"),
+        "USER": os.getenv("POSTGRES_USER", "mini_game"),
+        "PASSWORD": os.getenv("POSTGRES_PASSWORD", "mini_game"),
         "HOST": os.getenv("DB_HOST", "127.0.0.1"),
         "PORT": os.getenv("DB_PORT", "5432"),
     }
