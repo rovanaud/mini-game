@@ -1,5 +1,5 @@
 <template>
-  <div class="h-screen flex flex-col overflow-hidden" style="background-color: #F2F2F7">
+  <div class="min-h-[100dvh] flex flex-col overflow-hidden" style="background-color: #F2F2F7">
 
     <!-- Top Bar -->
     <header class="px-4 py-3 flex justify-between items-center flex-shrink-0"
@@ -138,12 +138,14 @@
           <span class="text-[9px] font-bold uppercase tracking-wide" style="color: #8E8E93">React</span>
         </button>
 
-        <button class="flex flex-col items-center gap-1 transition active:scale-90">
+        <button @click="toggleFullscreen" class="flex flex-col items-center gap-1 transition active:scale-90">
           <div class="w-12 h-12 rounded-2xl flex items-center justify-center"
                style="background-color: #F2F2F7">
-            <Zap :size="20" style="color: #1C1C1E" />
+            <component :is="isFullscreen ? Minimize2 : Maximize2" :size="20" style="color: #1C1C1E" />
           </div>
-          <span class="text-[9px] font-bold uppercase tracking-wide" style="color: #8E8E93">Actions</span>
+          <span class="text-[9px] font-bold uppercase tracking-wide" style="color: #8E8E93">
+            {{ isFullscreen ? 'Exit' : 'Full' }}
+          </span>
         </button>
       </div>
 
@@ -335,7 +337,7 @@ import { ref, computed, watch, onMounted, onUnmounted, nextTick, type Component 
 import { useRoute, useRouter } from 'vue-router'
 import {
   ChevronLeft, Timer, MessageSquare,
-  Smile, Zap, Flag, Send, Puzzle
+  Smile, Flag, Send, Puzzle, Maximize2, Minimize2
 } from 'lucide-vue-next'
 import type { TimerConfig } from '@/types'
 import type { ConnectFourState, ConnectFourConfig } from '@/types'
@@ -344,6 +346,7 @@ import { useMatchStore } from '@/stores/match'
 import { useActiveMatchStore } from '@/stores/activeMatch'
 import { useMatchSocket } from '@/composables/useMatchSocket'
 import {useSessionStore} from "@/stores/session";
+import { useToastStore } from '@/stores/toast'
 const gameRegistry: Record<string, Component> = {
   connect_four: ConnectFourBoard,
 }
@@ -353,6 +356,7 @@ const router = useRouter()
 const matchStore = useMatchStore()
 const activeMatchStore = useActiveMatchStore()
 const sessionStore = useSessionStore()
+const toastStore = useToastStore()
 
 
 // ── End-game state ─────────────────────────────────────────────
@@ -436,6 +440,10 @@ socket.on('chat_message', (e) => {
   })
   if (!showChat.value && !isMine) {
     unreadCount.value++
+    toastStore.push({
+      title: e.message.display_name ?? 'New message',
+      body: e.message.text,
+    })
   }
   // Auto-scroll chat to bottom
   nextTick(() => {
@@ -526,6 +534,29 @@ watch(timerConfig, (cfg) => {
 }, { once: true })
 
 let timerInterval: ReturnType<typeof setInterval>
+const isFullscreen = ref(false)
+
+const syncFullscreenState = () => {
+  isFullscreen.value = !!document.fullscreenElement
+}
+
+const toggleFullscreen = async () => {
+  try {
+    if (document.fullscreenElement) {
+      await document.exitFullscreen()
+    } else {
+      await document.documentElement.requestFullscreen()
+    }
+    syncFullscreenState()
+  } catch {
+    toastStore.push({
+      title: 'Fullscreen unavailable',
+      body: 'Your browser blocked fullscreen in this context.',
+      variant: 'warning',
+    })
+  }
+}
+
 onMounted(async () => {
   // HTTP fetch provides initial data (config, seats) while socket handshake completes.
   // The socket's own state_update on connect will then overwrite game_state.
@@ -543,9 +574,11 @@ onMounted(async () => {
   timerInterval = setInterval(() => {
     if (isMyTurn.value && timerConfig.value.enabled) seconds.value++
   }, 1000)
+  document.addEventListener('fullscreenchange', syncFullscreenState)
 })
 onUnmounted(() => {
   clearInterval(timerInterval)
+  document.removeEventListener('fullscreenchange', syncFullscreenState)
   matchStore.clear()
   // socket auto-disconnects via onUnmounted inside useMatchSocket
 })
